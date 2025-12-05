@@ -726,6 +726,159 @@ async def create_job_from_excel(
         "createdAt": job_doc["createdAt"].isoformat(),
     }
 
+@router.patch("/jobs/{job_id}/candidates", status_code=status.HTTP_200_OK)
+async def add_candidates_to_job(
+    job_id: str,
+    description: Optional[str] = Form(None),
+    candidates_data: str = Form(...),  # JSON string of candidate data
+    current_user: dict = Depends(get_current_user),
+) -> Dict[str, Any]:
+    """
+    Add candidates to an existing job from candidate data (parsed from Excel on frontend).
+    candidates_data should be JSON string containing array of {name, email, resumeLink}
+    """
+    import json
+    
+    try:
+        candidates = json.loads(candidates_data)
+    except json.JSONDecodeError:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid candidates data format")
+    
+    if not candidates or not isinstance(candidates, list):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Candidates data must be a non-empty array")
+    
+    # Validate job ID and ownership
+    try:
+        job_obj_id = ObjectId(job_id)
+    except Exception:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid job ID")
+
+    job = job_profiles.find_one({"_id": job_obj_id})
+    if not job:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Job not found")
+
+    if job["recruiterId"] != current_user["_id"]:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Not authorized to update this job")
+    
+    # Update description if provided
+    update_fields = {}
+    if description and description != job["description"]:
+        update_fields["description"] = description
+        index_job_description_chunks(job_id, description)
+    
+    # Get current job description for scoring
+    job_description = description or job["description"]
+    
+    new_files = []
+    new_scored_resumes = []
+    errors = []
+    
+    # Process each candidate
+    for idx, candidate in enumerate(candidates):
+        try:
+            name = candidate.get('name', '').strip()
+            email = candidate.get('email', '').strip()
+            resume_link = candidate.get('resumeLink', '').strip()
+            
+            if not all([name, email, resume_link]):
+                errors.append({
+                    "index": idx,
+                    "name": name or "Unknown",
+                    "error": "Missing required fields (name, email, or resume link)"
+                })
+                continue
+            
+            # Download resume from the provided link
+            try:
+                resume_bytes, file_extension = await download_resume_from_url(resume_link)
+            except Exception as e:
+                errors.append({
+                    "index": idx,
+                    "name": name,
+                    "error": f"Failed to download resume: {str(e)}"
+                })
+                continue
+            
+            # Extract text based on file type
+            if file_extension == '.pdf':
+                text = await extract_pdf_text(resume_bytes, f"{name}_resume{file_extension}")
+            else:
+                # For non-PDF files, try to decode as text
+                try:
+                    text = resume_bytes.decode('utf-8', errors='ignore')
+                except:
+                    text = f"Resume content for {name} (binary file)"
+            
+            # Store in GridFS
+            filename = f"{name.replace(' ', '_')}_resume{file_extension}"
+            file_id = fs.put(
+                resume_bytes,
+                filename=filename,
+                content_type="application/pdf" if file_extension == '.pdf' else "application/octet-stream",
+                uploadDate=datetime.utcnow()
+            )
+            
+            resume_id = str(file_id)
+            new_files.append({
+                "fileId": file_id,
+                "filename": filename,
+                "fileType": "application/pdf" if file_extension == '.pdf' else "application/octet-stream",
+            })
+            
+            # Index resume
+            index_resume_chunks(resume_id, text)
+            
+            # Score resume
+            score_result = await llm_score(
+                resume_id=resume_id,
+                filename=filename,
+                resume_text=text,
+                job_desc=job_description,
+                override_email=email  # Use the email from Excel
+            )
+            
+            # Use provided data as primary, LLM extraction as fallback
+            final_name = name or score_result.get("name", "Unknown")
+            final_email = email or score_result.get("email", "Not found")
+            
+            new_scored_resumes.append({
+                "resumeId": resume_id,
+                "filename": filename,
+                "name": final_name,
+                "email": final_email,
+                "score": score_result["score"],
+                "reasoning": score_result["reasoning"],
+                "text": text,
+                "status": "in-process",  # Default status for new resumes
+            })
+            
+        except Exception as e:
+            errors.append({
+                "index": idx,
+                "name": candidate.get('name', 'Unknown'),
+                "error": str(e)
+            })
+    
+    # Combine existing and new files/resumes
+    if new_files:
+        update_fields["files"] = job.get("files", []) + new_files
+    if new_scored_resumes:
+        update_fields["scoredResumes"] = job.get("scoredResumes", []) + new_scored_resumes
+    
+    # Apply update
+    if update_fields:
+        job_profiles.update_one({"_id": job_obj_id}, {"$set": update_fields})
+    
+    return {
+        "message": "Candidates added to job successfully",
+        "jobId": job_id,
+        "newScoredResumes": new_scored_resumes,
+        "errors": errors,
+        "totalProcessed": len(candidates),
+        "successCount": len(new_scored_resumes),
+        "errorCount": len(errors),
+    }
+
 @router.patch("/jobs/{job_id}/candidates/{resume_id}/status", status_code=status.HTTP_200_OK)
 async def update_candidate_status(
     job_id: str,
