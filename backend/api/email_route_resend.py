@@ -21,8 +21,11 @@ def validate_email(email: str) -> bool:
     """Validate email format"""
     return bool(EMAIL_REGEX.match(email))
 
-def create_shortlist_email_html(candidate_name: str) -> str:
+def create_shortlist_email_html(candidate_name: str, job_id: str, resume_id: str) -> str:
     """Create beautiful HTML email template for shortlist notification"""
+    # Create unique interview link with jobId and resumeId
+    interview_link = f"{settings.FRONTEND_URL}/interview?jobId={job_id}&resumeId={resume_id}"
+    
     return f"""
     <!DOCTYPE html>
     <html lang="en">
@@ -76,6 +79,23 @@ def create_shortlist_email_html(candidate_name: str) -> str:
                         <li style="margin-bottom: 8px;">We'll schedule a detailed interview to discuss the role further</li>
                         <li style="margin-bottom: 8px;">Please keep your phone accessible and check your email regularly</li>
                     </ul>
+                </div>
+                
+                <!-- Interview Link Section -->
+                <div style="text-align: center; margin: 30px 0;">
+                    <p style="color: #4a5568; font-size: 16px; margin: 0 0 20px 0;">
+                        Ready to take the next step? Click the button below to access your interview portal:
+                    </p>
+                    <a href="{interview_link}" 
+                       style="display: inline-block; background: linear-gradient(135deg, #10b981 0%, #059669 100%); 
+                              color: #ffffff; text-decoration: none; padding: 15px 30px; border-radius: 8px; 
+                              font-weight: 600; font-size: 16px; box-shadow: 0 4px 6px rgba(16, 185, 129, 0.25);
+                              transition: all 0.3s ease;">
+                        🚀 Start Interview Process
+                    </a>
+                    <p style="color: #6b7280; font-size: 14px; margin: 15px 0 0 0;">
+                        This link is unique to your application and will remain active for the next 30 days.
+                    </p>
                 </div>
                 
                 <!-- Tip Section -->
@@ -224,7 +244,7 @@ async def send_shortlist_emails(
                 continue
             
             # Prepare email content
-            html_content = create_shortlist_email_html(candidate_name)
+            html_content = create_shortlist_email_html(candidate_name, request.job_id, resume["resumeId"])
             subject = "🎉 Congratulations! You've Been Shortlisted"
             
             # Send email via Resend
@@ -252,12 +272,44 @@ async def send_shortlist_emails(
             })
             failed_count += 1
     
+    # Update candidate statuses after email sending
+    print(f"📊 Updating candidate statuses...")
+    
+    # Get all resumes for this job
+    all_resumes = job.get("scoredResumes", [])
+    status_updates = {"shortlisted": 0, "rejected": 0}
+    
+    # Update statuses: selected candidates remain 'in-process', others become 'reject'
+    for resume in all_resumes:
+        if resume["resumeId"] in request.resume_ids:
+            # Selected candidates: keep as 'in-process' (or set explicitly)
+            resume["status"] = "in-process"
+            status_updates["shortlisted"] += 1
+        else:
+            # Non-selected candidates: set to 'reject'
+            resume["status"] = "reject"
+            status_updates["rejected"] += 1
+    
+    # Update the job in database with new statuses
+    try:
+        job_profiles.update_one(
+            {"_id": job_obj_id},
+            {"$set": {"scoredResumes": all_resumes}}
+        )
+        print(f"✅ Status updates completed:")
+        print(f"   Shortlisted (in-process): {status_updates['shortlisted']}")
+        print(f"   Rejected: {status_updates['rejected']}")
+    except Exception as e:
+        print(f"❌ Failed to update statuses: {str(e)}")
+        # Don't fail the entire operation if status update fails
+    
     result = {
         "message": "Email sending process completed via Resend",
         "sent": sent_count,
         "failed": failed_count,
         "errors": errors,
-        "total_requested": len(request.resume_ids)
+        "total_requested": len(request.resume_ids),
+        "status_updates": status_updates  # Include status update info in response
     }
     
     print(f"📧 Resend email results: {result}")

@@ -4,6 +4,7 @@ import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/ca
 import { Badge } from '@/components/ui/badge';
 import { Users, FileText, Mail, MessageSquare, Shield, Clock, TrendingUp } from 'lucide-react';
 import Link from 'next/link';
+
 export default function InterviewPlatformLanding() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50">

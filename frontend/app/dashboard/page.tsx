@@ -16,6 +16,7 @@ interface Resume {
   filename:        string
   score:           number
   feedback?:       string
+  status?:         'in-process' | 'accept' | 'reject'
 }
 
 interface Job {

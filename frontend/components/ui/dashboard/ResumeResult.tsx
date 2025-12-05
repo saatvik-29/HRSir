@@ -80,6 +80,7 @@ interface Resume {
   score: number
   feedback?: string
   resumeId: string
+  status?: 'in-process' | 'accept' | 'reject'
 }
 
 interface Job {

@@ -5,7 +5,7 @@ import fitz                      # PyMuPDF
 from typing        import Dict, Any, List, Tuple, Optional
 from datetime      import datetime
 from fastapi       import APIRouter, Depends, Form, File, UploadFile, HTTPException, status, Response
-from models.jobs     import JobSummary, ResumeSummary
+from models.jobs     import JobSummary, ResumeSummary, CandidateStatus, StatusUpdateRequest
 from utils.pdf_parser import extract_pdf_text
 from utils.getuser    import get_current_user
 from utils.llm        import llm_score
@@ -188,6 +188,7 @@ async def create_job(
             "score":     score_result["score"],
             "reasoning": score_result["reasoning"],
             "text":      text,
+            "status":    "in-process",  # Default status for new resumes
         })
 
     # D) Patch the full arrays back into MongoDB
@@ -232,6 +233,7 @@ async def list_my_jobs(current_user: dict = Depends(get_current_user)):
                         name=r["name"],
                         email=r["email"],
                         score=r["score"],
+                        status=r.get("status", "in-process"),  # Default to in-process for existing data
                     )
                     for r in job.get("scoredResumes", [])
                 ],
@@ -317,6 +319,7 @@ async def update_job(
                 "score":     score_result["score"],
                 "reasoning": score_result["reasoning"],
                 "text":      text,
+                "status":    "in-process",  # Default status for new resumes
             })
 
     # Combine existing and new files/resumes
@@ -536,6 +539,7 @@ async def create_job_from_candidates(
                 "score": score_result["score"],
                 "reasoning": score_result["reasoning"],
                 "text": text,
+                "status": "in-process",  # Default status for new resumes
             })
             
         except Exception as e:
@@ -693,6 +697,7 @@ async def create_job_from_excel(
                 "score": score_result["score"],
                 "reasoning": score_result["reasoning"],
                 "text": text,
+                "status": "in-process",  # Default status for new resumes
             })
             
         except Exception as e:
@@ -719,4 +724,56 @@ async def create_job_from_excel(
         "successCount": len(scored_resumes),
         "errorCount": len(errors),
         "createdAt": job_doc["createdAt"].isoformat(),
+    }
+
+@router.patch("/jobs/{job_id}/candidates/{resume_id}/status", status_code=status.HTTP_200_OK)
+async def update_candidate_status(
+    job_id: str,
+    resume_id: str,
+    request: StatusUpdateRequest,
+    current_user: dict = Depends(get_current_user),
+) -> Dict[str, Any]:
+    """
+    Update the status of a specific candidate (resume) in a job.
+    Status can be: 'in-process', 'accept', or 'reject'
+    """
+    
+    # Validate job ID format
+    try:
+        job_obj_id = ObjectId(job_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid job ID format")
+    
+    # Find the job and verify ownership
+    job = job_profiles.find_one({"_id": job_obj_id})
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    
+    if job["recruiterId"] != current_user["_id"]:
+        raise HTTPException(status_code=403, detail="Not authorized to update this job")
+    
+    # Find the specific resume and update its status
+    scored_resumes = job.get("scoredResumes", [])
+    resume_found = False
+    
+    for resume in scored_resumes:
+        if resume["resumeId"] == resume_id:
+            resume["status"] = request.status.value
+            resume_found = True
+            break
+    
+    if not resume_found:
+        raise HTTPException(status_code=404, detail="Resume not found in this job")
+    
+    # Update the job in the database
+    job_profiles.update_one(
+        {"_id": job_obj_id},
+        {"$set": {"scoredResumes": scored_resumes}}
+    )
+    
+    return {
+        "message": "Candidate status updated successfully",
+        "jobId": job_id,
+        "resumeId": resume_id,
+        "newStatus": request.status.value
     }
