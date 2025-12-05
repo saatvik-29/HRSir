@@ -21,10 +21,59 @@ def validate_email(email: str) -> bool:
     """Validate email format"""
     return bool(EMAIL_REGEX.match(email))
 
-def create_shortlist_email_html(candidate_name: str, job_id: str, resume_id: str) -> str:
+def extract_company_name_from_description(description: str) -> str:
+    """Extract company name from job description"""
+    import re
+    
+    # Look for common patterns like "Company: XYZ" or "Company Name: XYZ"
+    patterns = [
+        r'company\s*name?\s*:\s*([^\n\r]+)',
+        r'company\s*:\s*([^\n\r]+)',
+        r'organization\s*:\s*([^\n\r]+)',
+        r'employer\s*:\s*([^\n\r]+)',
+        r'at\s+([A-Z][a-zA-Z\s&]+?)(?:\s+we|\s+is|\s+has|\.|,)',
+        r'join\s+([A-Z][a-zA-Z\s&]+?)(?:\s+team|\s+as|\.|,)',
+    ]
+    
+    for pattern in patterns:
+        match = re.search(pattern, description, re.IGNORECASE)
+        if match:
+            company_name = match.group(1).strip()
+            # Clean up common suffixes and prefixes
+            company_name = re.sub(r'\s+(inc|ltd|llc|corp|corporation|company)\.?$', '', company_name, flags=re.IGNORECASE)
+            if len(company_name) > 2 and len(company_name) < 50:  # Reasonable company name length
+                return company_name
+    
+    # Default fallback
+    return "Company"
+
+def create_interview_link(company_name: str, job_id: str, resume_id: str) -> str:
+    """Create interview link with company name subdomain format"""
+    # Clean company name for URL (remove spaces, special chars, make lowercase)
+    clean_company = re.sub(r'[^a-zA-Z0-9]', '', company_name.lower())
+    
+    # Create the new URL format: www.companyname.PaceIT.com
+    base_domain = f"www.{clean_company}.{settings.ORG_NAME.lower()}.com"
+    
+    # For development, we'll use the original frontend URL with a special path
+    # In production, you would set up the actual subdomain routing
+    if "localhost" in settings.FRONTEND_URL or "127.0.0.1" in settings.FRONTEND_URL:
+        # Development mode: use original URL with company parameter
+        interview_link = f"{settings.FRONTEND_URL}/interview?company={clean_company}&jobId={job_id}&resumeId={resume_id}"
+    else:
+        # Production mode: use the subdomain format
+        protocol = "https://" if "https" in settings.FRONTEND_URL else "http://"
+        interview_link = f"{protocol}{base_domain}/interview?jobId={job_id}&resumeId={resume_id}"
+    
+    return interview_link
+
+def create_shortlist_email_html(candidate_name: str, job_id: str, resume_id: str, job_description: str = "") -> str:
     """Create beautiful HTML email template for shortlist notification"""
-    # Create unique interview link with jobId and resumeId
-    interview_link = f"{settings.FRONTEND_URL}/interview?jobId={job_id}&resumeId={resume_id}"
+    # Extract company name from job description
+    company_name = extract_company_name_from_description(job_description)
+    
+    # Create unique interview link with company subdomain
+    interview_link = create_interview_link(company_name, job_id, resume_id)
     
     return f"""
     <!DOCTYPE html>
@@ -244,7 +293,7 @@ async def send_shortlist_emails(
                 continue
             
             # Prepare email content
-            html_content = create_shortlist_email_html(candidate_name, request.job_id, resume["resumeId"])
+            html_content = create_shortlist_email_html(candidate_name, request.job_id, resume["resumeId"], job.get("description", ""))
             subject = "🎉 Congratulations! You've Been Shortlisted"
             
             # Send email via Resend

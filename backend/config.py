@@ -13,6 +13,7 @@ class Settings:
     REFRESH_TOKEN_EXPIRE_DAYS = 7
     MONGODB_URL= os.getenv("MONGODB_URL")
     FRONTEND_URL= os.getenv("FRONTEND_URL", "http://localhost:3000")
+    ORG_NAME= os.getenv("ORG_NAME", "PaceIT")
     AUTH_DB_NAME= os.getenv("AUTH_DB_NAME", "auth_db")
     APP_DB_NAME= os.getenv("APP_DB_NAME", "app_db")
     QDRANT_URL = os.getenv("QDRANT_URL", "http://localhost:6333")
