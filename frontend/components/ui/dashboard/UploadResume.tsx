@@ -8,7 +8,6 @@ import {
   Download,
   AlertCircle
 } from 'lucide-react'
-import * as XLSX from 'xlsx'
 
 interface ParsedJobDetails {
   jobTitle?: string
@@ -79,18 +78,12 @@ interface Job {
   }>
 }
 
-interface CandidateData {
-  name: string
-  email: string
-  resumeLink: string
-}
-
 interface UploadResumeProps {
   user: { name: string }
   selectedJob: Job | null
   isUploading: boolean
   onBack: () => void
-  onSubmit: (description: string, files: File[], candidatesData?: CandidateData[]) => Promise<void>
+  onSubmit: (description: string, files: File[], excelFile?: File) => Promise<void>
 }
 
 const UploadResume: React.FC<UploadResumeProps> = ({
@@ -111,9 +104,6 @@ const UploadResume: React.FC<UploadResumeProps> = ({
   const [selectedFiles, setSelectedFiles] = useState<File[]>([])
   const [uploadMode, setUploadMode] = useState<'pdf' | 'excel'>('pdf')
   const [excelFile, setExcelFile] = useState<File | null>(null)
-  const [candidatesData, setCandidatesData] = useState<CandidateData[]>([])
-  const [isProcessingExcel, setIsProcessingExcel] = useState(false)
-  const [excelError, setExcelError] = useState<string>('')
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
@@ -121,117 +111,28 @@ const UploadResume: React.FC<UploadResumeProps> = ({
     }
   }
 
-  const handleExcelSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleExcelSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
-
     setExcelFile(file)
-    setExcelError('')
-    setIsProcessingExcel(true)
-
-    try {
-      const data = await parseExcelFile(file)
-      setCandidatesData(data)
-    } catch (error) {
-      setExcelError(error instanceof Error ? error.message : 'Failed to parse Excel file')
-      setCandidatesData([])
-    } finally {
-      setIsProcessingExcel(false)
-    }
-  }
-
-  const parseExcelFile = (file: File): Promise<CandidateData[]> => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader()
-
-      reader.onload = (e) => {
-        try {
-          const data = new Uint8Array(e.target?.result as ArrayBuffer)
-          const workbook = XLSX.read(data, { type: 'array' })
-          const sheetName = workbook.SheetNames[0]
-          const worksheet = workbook.Sheets[sheetName]
-          const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 }) as any[][]
-
-          if (jsonData.length < 2) {
-            throw new Error('Excel file must have at least a header row and one data row')
-          }
-
-          const headers = jsonData[0].map((h: any) => String(h).toLowerCase().trim())
-
-          // Find column indices for required fields
-          const nameIndex = findColumnIndex(headers, ['name', 'full name', 'candidate name', 'applicant name'])
-          const emailIndex = findColumnIndex(headers, ['email', 'email address', 'e-mail'])
-          const resumeIndex = findColumnIndex(headers, ['resume', 'resume link', 'cv', 'cv link', 'resume url', 'cv url', 'link'])
-
-          if (nameIndex === -1) {
-            throw new Error('Could not find name column. Expected headers: name, full name, candidate name, or applicant name')
-          }
-          if (emailIndex === -1) {
-            throw new Error('Could not find email column. Expected headers: email, email address, or e-mail')
-          }
-          if (resumeIndex === -1) {
-            throw new Error('Could not find resume link column. Expected headers: resume, resume link, cv, cv link, resume url, cv url, or link')
-          }
-
-          const candidates: CandidateData[] = []
-
-          for (let i = 1; i < jsonData.length; i++) {
-            const row = jsonData[i]
-            const name = String(row[nameIndex] || '').trim()
-            const email = String(row[emailIndex] || '').trim()
-            const resumeLink = String(row[resumeIndex] || '').trim()
-
-            if (name && email && resumeLink) {
-              // Validate email format
-              const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-              if (!emailRegex.test(email)) {
-                console.warn(`Invalid email format for ${name}: ${email}`)
-                continue
-              }
-
-              candidates.push({
-                name,
-                email,
-                resumeLink
-              })
-            }
-          }
-
-          if (candidates.length === 0) {
-            throw new Error('No valid candidate data found. Please ensure all rows have name, email, and resume link.')
-          }
-
-          resolve(candidates)
-        } catch (error) {
-          reject(error)
-        }
-      }
-
-      reader.onerror = () => reject(new Error('Failed to read Excel file'))
-      reader.readAsArrayBuffer(file)
-    })
-  }
-
-  const findColumnIndex = (headers: string[], possibleNames: string[]): number => {
-    for (const name of possibleNames) {
-      const index = headers.findIndex(h => h.includes(name))
-      if (index !== -1) return index
-    }
-    return -1
   }
 
   const downloadSampleExcel = () => {
-    const sampleData = [
-      ['Name', 'Email', 'Resume Link'],
-      ['John Doe', 'john.doe@example.com', 'https://example.com/resumes/john-doe.pdf'],
-      ['Jane Smith', 'jane.smith@example.com', 'https://example.com/resumes/jane-smith.pdf'],
-      ['Mike Johnson', 'mike.johnson@example.com', 'https://example.com/resumes/mike-johnson.pdf']
-    ]
+    // Create a simple CSV-like content for download
+    const csvContent = `Name,Email,Drive Link
+John Doe,john.doe@example.com,https://drive.google.com/file/d/YOUR_FILE_ID_1/view
+Jane Smith,jane.smith@example.com,https://drive.google.com/file/d/YOUR_FILE_ID_2/view
+Mike Johnson,mike.johnson@example.com,https://drive.google.com/file/d/YOUR_FILE_ID_3/view`
 
-    const ws = XLSX.utils.aoa_to_sheet(sampleData)
-    const wb = XLSX.utils.book_new()
-    XLSX.utils.book_append_sheet(wb, ws, 'Candidates')
-    XLSX.writeFile(wb, 'candidate-template.xlsx')
+    const blob = new Blob([csvContent], { type: 'text/csv' })
+    const url = window.URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = 'candidate-template.csv'
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    window.URL.revokeObjectURL(url)
   }
 
   // Prefill from draft saved in JobsGrid modal
@@ -263,8 +164,8 @@ const UploadResume: React.FC<UploadResumeProps> = ({
         return
       }
     } else {
-      if (candidatesData.length === 0) {
-        alert('Please upload and process an Excel file with candidate data')
+      if (!excelFile) {
+        alert('Please upload an Excel file with candidate data')
         return
       }
     }
@@ -301,9 +202,9 @@ Experience Required: ${experienceRequired}
 Basic Requirements: ${basicRequirements}
 ${additionalNotes ? `\nAdditional Notes: ${additionalNotes}` : ''}`
 
-    // Pass candidates data if using Excel mode
-    const candidates = uploadMode === 'excel' ? candidatesData : undefined
-    await onSubmit(description, selectedFiles, candidates)
+    // Pass Excel file if using Excel mode
+    const excelFileToUpload = uploadMode === 'excel' && excelFile ? excelFile : undefined
+    await onSubmit(description, selectedFiles, excelFileToUpload)
 
     // Reset form
     setJobTitle('')
@@ -315,8 +216,6 @@ ${additionalNotes ? `\nAdditional Notes: ${additionalNotes}` : ''}`
     setAdditionalNotes('')
     setSelectedFiles([])
     setExcelFile(null)
-    setCandidatesData([])
-    setExcelError('')
   }
 
   const getScoreColor = (score: number) => {
@@ -703,55 +602,19 @@ ${additionalNotes ? `\nAdditional Notes: ${additionalNotes}` : ''}`}
                           <span className="text-sm text-gray-700 truncate">{excelFile.name}</span>
                           <span className="text-xs text-gray-500">{(excelFile.size / 1024).toFixed(1)} KB</span>
                         </div>
-                      </div>
-                    )}
-
-                    {isProcessingExcel && (
-                      <div className="flex items-center space-x-2 p-3 bg-blue-50 rounded-lg">
-                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
-                        <span className="text-sm text-blue-700">Processing Excel file...</span>
-                      </div>
-                    )}
-
-                    {excelError && (
-                      <div className="flex items-start space-x-2 p-3 bg-red-50 border border-red-200 rounded-lg">
-                        <AlertCircle className="w-4 h-4 text-red-500 mt-0.5 flex-shrink-0" />
-                        <div className="text-sm text-red-700">
-                          <div className="font-medium">Error processing Excel file:</div>
-                          <div>{excelError}</div>
-                        </div>
-                      </div>
-                    )}
-
-                    {candidatesData.length > 0 && (
-                      <div className="space-y-2">
-                        <p className="text-sm font-medium text-gray-700">
-                          Parsed Candidates ({candidatesData.length}):
+                        <p className="text-xs text-gray-500">
+                          File will be processed on the server after upload
                         </p>
-                        <div className="max-h-40 overflow-y-auto space-y-1 border border-gray-200 rounded-lg p-2">
-                          {candidatesData.map((candidate, index) => (
-                            <div key={index} className="flex items-center justify-between p-2 bg-gray-50 rounded text-xs">
-                              <div className="flex-1 min-w-0">
-                                <div className="font-medium text-gray-900 truncate">{candidate.name}</div>
-                                <div className="text-gray-500 truncate">{candidate.email}</div>
-                              </div>
-                              <div className="ml-2 text-blue-600 truncate max-w-20">
-                                <a href={candidate.resumeLink} target="_blank" rel="noopener noreferrer" className="hover:underline">
-                                  Resume
-                                </a>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
                       </div>
                     )}
 
                     <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
                       <h4 className="font-medium text-blue-800 mb-2">Excel Format Requirements:</h4>
                       <ul className="text-sm text-blue-700 space-y-1">
-                        <li>• Must contain columns: <strong>Name</strong>, <strong>Email</strong>, <strong>Resume Link</strong></li>
-                        <li>• Column names can be variations (e.g., "Full Name", "Email Address", "CV Link")</li>
-                        <li>• Resume links should be direct URLs to PDF files</li>
+                        <li>• Must contain columns: <strong>name</strong>, <strong>email</strong>, <strong>drive</strong></li>
+                        <li>• Column names can be variations (e.g., "candidate_name", "email_address", "driveUrl")</li>
+                        <li>• Drive links should be Google Drive URLs with public access</li>
+                        <li>• Format: https://drive.google.com/file/d/FILE_ID/view</li>
                         <li>• All rows must have valid data in all three columns</li>
                       </ul>
                     </div>
@@ -764,7 +627,7 @@ ${additionalNotes ? `\nAdditional Notes: ${additionalNotes}` : ''}`}
                   disabled={
                     isUploading ||
                     (uploadMode === 'pdf' && selectedFiles.length === 0) ||
-                    (uploadMode === 'excel' && candidatesData.length === 0)
+                    (uploadMode === 'excel' && !excelFile)
                   }
                   className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white py-2 px-4 rounded-lg flex items-center justify-center space-x-2 transition-colors"
                 >
@@ -779,7 +642,7 @@ ${additionalNotes ? `\nAdditional Notes: ${additionalNotes}` : ''}`}
                       <span>
                         {uploadMode === 'pdf'
                           ? (selectedJob ? 'Add Resumes' : 'Upload & Process')
-                          : (selectedJob ? 'Add Candidates' : 'Process Candidates')
+                          : (selectedJob ? 'Add Candidates from Excel' : 'Upload & Process Excel')
                         }
                       </span>
                     </>

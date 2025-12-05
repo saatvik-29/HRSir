@@ -157,22 +157,25 @@ const HRInterviewApp = () => {
     }
   }
 
-  // Create job from candidate data (Excel mode)
-  const createJobFromCandidates = async (description: string, candidatesData: any[]) => {
+  // Create job from Excel file
+  const createJobFromExcel = async (description: string, excelFile: File) => {
     if (!user) return
 
     try {
       setIsUploading(true)
       const formData = new FormData()
       formData.append('description', description)
-      formData.append('candidates_data', JSON.stringify(candidatesData))
+      formData.append('excel_file', excelFile)
 
-      const response = await fetch(`${API_BASE}/jobs/candidates`, {
+      const response = await fetch(`${API_BASE}/jobs/excel`, {
         method: 'POST',
         credentials: 'include',
         body: formData,
       })
-      if (!response.ok) throw new Error('Failed to create job from candidates')
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.detail || 'Failed to create job from Excel')
+      }
 
       const newJob = await response.json()
       
@@ -191,8 +194,12 @@ const HRInterviewApp = () => {
       
       return newJob
     } catch (error) {
-      console.error('Error creating job from candidates:', error)
-      alert('Error creating job from candidates. Please try again.')
+      console.error('Error creating job from Excel:', error)
+      if (error && typeof error === 'object' && 'message' in error) {
+        alert(`Error creating job from Excel: ${(error as { message: string }).message}`)
+      } else {
+        alert('Error creating job from Excel. Please try again.')
+      }
       setCurrentState('jobs')
     } finally {
       setIsUploading(false)
@@ -200,10 +207,10 @@ const HRInterviewApp = () => {
   }
 
   // Handle upload submission - decides whether to create or update
-  const handleUploadSubmit = async (description: string, files: File[], candidatesData?: any[]) => {
-    if (candidatesData && candidatesData.length > 0) {
-      // Excel mode - create job from candidate data
-      await createJobFromCandidates(description, candidatesData)
+  const handleUploadSubmit = async (description: string, files: File[], excelFile?: File) => {
+    if (excelFile) {
+      // Excel mode - create job from Excel file
+      await createJobFromExcel(description, excelFile)
     } else if (selectedJob) {
       // Update existing job with PDF files
       await updateJob(selectedJob.jobId, description, files)
