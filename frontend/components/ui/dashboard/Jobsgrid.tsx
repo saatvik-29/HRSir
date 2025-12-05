@@ -7,7 +7,10 @@ import {
   Star,
   Plus,
   Search,
-  Filter
+  Filter,
+  MoreVertical,
+  Trash2,
+  Eye
 } from 'lucide-react'
 
 // interface Job {
@@ -28,6 +31,7 @@ interface JobsGridProps {
   loading: boolean
   onJobSelect: (job: Job) => void
   onNewJobClick: () => void
+  onDeleteJob?: (jobId: string) => Promise<void>
 }
 
 const JobsGrid: React.FC<JobsGridProps> = ({ 
@@ -35,17 +39,13 @@ const JobsGrid: React.FC<JobsGridProps> = ({
   user, 
   loading, 
   onJobSelect, 
-  onNewJobClick 
+  onNewJobClick,
+  onDeleteJob
 }) => {
   const [searchTerm, setSearchTerm] = useState('')
-  const [showCreate, setShowCreate] = useState(false)
-  const [jobTitle, setJobTitle] = useState('')
-  const [jobType, setJobType] = useState('')
-  const [duration, setDuration] = useState('')
-  const [skillsRequired, setSkillsRequired] = useState('')
-  const [experienceRequired, setExperienceRequired] = useState('')
-  const [basicRequirements, setBasicRequirements] = useState('')
-  const [additionalNotes, setAdditionalNotes] = useState('')
+  const [openDropdown, setOpenDropdown] = useState<string | null>(null)
+  const [deletingJobId, setDeletingJobId] = useState<string | null>(null)
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null)
 
   const filteredJobs = jobs.filter(job =>
     job.description.toLowerCase().includes(searchTerm.toLowerCase())
@@ -57,6 +57,27 @@ const JobsGrid: React.FC<JobsGridProps> = ({
       month: 'short',
       day: 'numeric',
     })
+
+  const handleDeleteClick = async (jobId: string) => {
+    if (!onDeleteJob) return
+    
+    setDeletingJobId(jobId)
+    try {
+      await onDeleteJob(jobId)
+      setShowDeleteConfirm(null)
+      setOpenDropdown(null)
+    } catch (error) {
+      console.error('Failed to delete job:', error)
+      alert('Failed to delete job. Please try again.')
+    } finally {
+      setDeletingJobId(null)
+    }
+  }
+
+  const toggleDropdown = (jobId: string, e: React.MouseEvent) => {
+    e.stopPropagation()
+    setOpenDropdown(openDropdown === jobId ? null : jobId)
+  }
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -74,7 +95,7 @@ const JobsGrid: React.FC<JobsGridProps> = ({
               </div>
             </div>
             <button
-              onClick={() => setShowCreate(true)}
+              onClick={onNewJobClick}
               className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center space-x-2 transition-colors"
             >
               <Plus className="w-4 h-4" />
@@ -113,43 +134,101 @@ const JobsGrid: React.FC<JobsGridProps> = ({
             {filteredJobs.map((job) => (
               <div
                 key={job.jobId}
-                className="bg-white rounded-lg shadow-sm border border-gray-200 hover:shadow-md transition-shadow cursor-pointer"
+                className="bg-white rounded-lg shadow-sm border border-gray-200 hover:shadow-md transition-all cursor-pointer relative group"
                 onClick={() => onJobSelect(job)}
               >
                 <div className="p-6">
+                  {/* Header with dropdown */}
                   <div className="flex items-start justify-between mb-4">
-                    <div className="flex items-center space-x-2">
-                      <FileText className="w-5 h-5 text-blue-600" />
-                      <span className="text-sm font-medium text-gray-900">Job Description</span>
+                    <div className="flex items-center space-x-2 flex-1">
+                      <div className="w-8 h-8 bg-blue-50 rounded-lg flex items-center justify-center">
+                        <FileText className="w-4 h-4 text-blue-600" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <span className="text-sm font-semibold text-gray-900 block truncate">
+                          {job.description.split('\n')[0].replace('Job Title:', '').trim() || 'Job Posting'}
+                        </span>
+                        <div className="flex items-center space-x-1 text-xs text-gray-500 mt-0.5">
+                          <Calendar className="w-3 h-3" />
+                          <span>{formatDate(job.createdAt)}</span>
+                        </div>
+                      </div>
                     </div>
-                    <div className="flex items-center space-x-1 text-sm text-gray-500">
-                      <Calendar className="w-4 h-4" />
-                      <span>{formatDate(job.createdAt)}</span>
+                    
+                    {/* Dropdown Menu */}
+                    <div className="relative" onClick={(e) => e.stopPropagation()}>
+                      <button
+                        onClick={(e) => toggleDropdown(job.jobId, e)}
+                        className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
+                      >
+                        <MoreVertical className="w-4 h-4 text-gray-500" />
+                      </button>
+                      
+                      {openDropdown === job.jobId && (
+                        <>
+                          <div 
+                            className="fixed inset-0 z-10" 
+                            onClick={() => setOpenDropdown(null)}
+                          />
+                          <div className="absolute right-0 mt-1 w-48 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-20">
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                setOpenDropdown(null)
+                                onJobSelect(job)
+                              }}
+                              className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center space-x-2"
+                            >
+                              <Eye className="w-4 h-4" />
+                              <span>View Details</span>
+                            </button>
+                            {onDeleteJob && (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  setShowDeleteConfirm(job.jobId)
+                                  setOpenDropdown(null)
+                                }}
+                                className="w-full px-4 py-2 text-left text-sm text-red-600 hover:bg-red-50 flex items-center space-x-2"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                                <span>Delete Job</span>
+                              </button>
+                            )}
+                          </div>
+                        </>
+                      )}
                     </div>
                   </div>
                   
-                  <p className="text-gray-700 text-sm mb-4 line-clamp-3">
-                    {job.description}
+                  {/* Job Description Preview */}
+                  <p className="text-gray-600 text-sm mb-4 line-clamp-2 leading-relaxed">
+                    {job.description.split('\n').slice(1).join(' ').substring(0, 120)}...
                   </p>
                   
-                  <div className="flex items-center justify-between">
+                  {/* Stats */}
+                  <div className="flex items-center justify-between pt-3 border-t border-gray-100">
                     <div className="flex items-center space-x-4">
-                      <div className="flex items-center space-x-1">
-                        <Users className="w-4 h-4 text-gray-400" />
-                        <span className="text-sm text-gray-600">{job.scoredResumes.length} resumes</span>
+                      <div className="flex items-center space-x-1.5">
+                        <div className="w-6 h-6 bg-gray-100 rounded-full flex items-center justify-center">
+                          <Users className="w-3.5 h-3.5 text-gray-600" />
+                        </div>
+                        <span className="text-sm font-medium text-gray-700">{job.scoredResumes.length}</span>
                       </div>
                       {job.scoredResumes.length > 0 && (
-                        <div className="flex items-center space-x-1">
-                          <Star className="w-4 h-4 text-yellow-500" />
-                          <span className="text-sm text-gray-600">
+                        <div className="flex items-center space-x-1.5">
+                          <div className="w-6 h-6 bg-yellow-50 rounded-full flex items-center justify-center">
+                            <Star className="w-3.5 h-3.5 text-yellow-500 fill-yellow-500" />
+                          </div>
+                          <span className="text-sm font-medium text-gray-700">
                             {(job.scoredResumes.reduce((sum, r) => sum + r.score, 0) / job.scoredResumes.length).toFixed(1)}
                           </span>
                         </div>
                       )}
                     </div>
-                    <button className="text-blue-600 hover:text-blue-800 text-sm font-medium">
-                      View Details →
-                    </button>
+                    <span className="text-blue-600 hover:text-blue-700 text-xs font-medium">
+                      View →
+                    </span>
                   </div>
                 </div>
               </div>
@@ -165,7 +244,7 @@ const JobsGrid: React.FC<JobsGridProps> = ({
               {searchTerm ? 'No jobs match your search criteria.' : 'Get started by creating your first job posting.'}
             </p>
             <button
-              onClick={() => setShowCreate(true)}
+              onClick={onNewJobClick}
               className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg"
             >
               Create New Job
@@ -174,85 +253,48 @@ const JobsGrid: React.FC<JobsGridProps> = ({
         )}
       </div>
 
-      {/* Create New Job Modal */}
-      {showCreate && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center">
-          <div className="absolute inset-0 bg-black/40" onClick={() => setShowCreate(false)} />
-          <div className="relative bg-white w-full max-w-2xl rounded-lg shadow-xl border border-gray-200 p-6 mx-4">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-semibold text-gray-900">Create New Job</h2>
-              <button onClick={() => setShowCreate(false)} className="text-gray-500 hover:text-gray-700">✕</button>
+      {/* Delete Confirmation Modal */}
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+          <div className="bg-white rounded-xl shadow-2xl max-w-md w-full p-6 border border-gray-200">
+            <div className="flex items-center space-x-3 mb-4">
+              <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center">
+                <Trash2 className="w-6 h-6 text-red-600" />
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900">Delete Job</h3>
+                <p className="text-sm text-gray-500">This action cannot be undone</p>
+              </div>
             </div>
-            <div className="grid grid-cols-1 gap-4 max-h-[70vh] overflow-y-auto pr-1">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Job Title *</label>
-                <input value={jobTitle} onChange={e => setJobTitle(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="e.g., Senior Software Engineer" />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Job Type *</label>
-                <select value={jobType} onChange={e => setJobType(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
-                  <option value="">Select job type</option>
-                  <option value="Full-time">Full-time</option>
-                  <option value="Part-time">Part-time</option>
-                  <option value="Contract">Contract</option>
-                  <option value="Internship">Internship</option>
-                  <option value="Freelance">Freelance</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Duration</label>
-                <input value={duration} onChange={e => setDuration(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="e.g., 6 months, Permanent, etc." />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Skills Required *</label>
-                <textarea value={skillsRequired} onChange={e => setSkillsRequired(e.target.value)} rows={3} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="e.g., JavaScript, React, Node.js, Python, SQL" />
-                <p className="text-xs text-gray-500 mt-1">Separate skills with commas</p>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Experience Required *</label>
-                <input value={experienceRequired} onChange={e => setExperienceRequired(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="e.g., 3-5 years, Entry level, Senior level" />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Basic Requirements *</label>
-                <textarea value={basicRequirements} onChange={e => setBasicRequirements(e.target.value)} rows={4} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="• Bachelor's degree in Computer Science or related field\n• Strong problem-solving skills\n• Excellent communication abilities\n• Team collaboration experience" />
-                <p className="text-xs text-gray-500 mt-1">Use bullet points (•) for better formatting</p>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Additional Notes</label>
-                <textarea value={additionalNotes} onChange={e => setAdditionalNotes(e.target.value)} rows={3} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="Any additional information about the role, company culture, benefits, etc." />
-              </div>
-              {/* Preview */}
-              {(jobTitle || jobType || skillsRequired || experienceRequired || basicRequirements) && (
-                <div className="bg-gray-50 p-3 rounded border">
-                  <h4 className="font-medium text-gray-900 mb-2">Job Description Preview</h4>
-                  <pre className="whitespace-pre-wrap text-sm text-gray-700">{`Job Title: ${jobTitle}
-Job Type: ${jobType}
-Duration: ${duration}
-Skills Required: ${skillsRequired}
-Experience Required: ${experienceRequired}
-Basic Requirements: ${basicRequirements}
-${additionalNotes ? `\nAdditional Notes: ${additionalNotes}` : ''}`}</pre>
-                </div>
-              )}
-            </div>
-
-            <div className="mt-4 flex items-center justify-end space-x-3">
-              <button onClick={() => setShowCreate(false)} className="px-4 py-2 rounded border border-gray-300 text-gray-700 hover:bg-gray-50">Cancel</button>
+            
+            <p className="text-gray-600 mb-6">
+              Are you sure you want to delete this job posting? All associated resumes and data will be permanently removed.
+            </p>
+            
+            <div className="flex items-center space-x-3">
               <button
-                onClick={() => {
-                  if (!jobTitle || !jobType || !skillsRequired || !experienceRequired || !basicRequirements) {
-                    alert('Please fill in all required fields (*)')
-                    return
-                  }
-                  const description = `Job Title: ${jobTitle}\nJob Type: ${jobType}\nDuration: ${duration}\nSkills Required: ${skillsRequired}\nExperience Required: ${experienceRequired}\nBasic Requirements: ${basicRequirements}\n${additionalNotes ? `\nAdditional Notes: ${additionalNotes}` : ''}`
-                  const draft = { jobTitle, jobType, duration, skillsRequired, experienceRequired, basicRequirements, additionalNotes, description }
-                  try { localStorage.setItem('draftJobForm', JSON.stringify(draft)) } catch {}
-                  setShowCreate(false)
-                  onNewJobClick()
-                }}
-                className="px-4 py-2 rounded bg-blue-600 text-white hover:bg-blue-700"
+                onClick={() => setShowDeleteConfirm(null)}
+                disabled={deletingJobId === showDeleteConfirm}
+                className="flex-1 px-4 py-2.5 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 font-medium transition-colors disabled:opacity-50"
               >
-                Continue
+                Cancel
+              </button>
+              <button
+                onClick={() => handleDeleteClick(showDeleteConfirm)}
+                disabled={deletingJobId === showDeleteConfirm}
+                className="flex-1 px-4 py-2.5 bg-red-600 text-white rounded-lg hover:bg-red-700 font-medium transition-colors disabled:opacity-50 flex items-center justify-center space-x-2"
+              >
+                {deletingJobId === showDeleteConfirm ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                    <span>Deleting...</span>
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-4 h-4" />
+                    <span>Delete</span>
+                  </>
+                )}
               </button>
             </div>
           </div>

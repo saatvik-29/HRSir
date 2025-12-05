@@ -13,7 +13,12 @@ import {
   Send,
   CheckSquare,
   Square,
-  Loader2
+  Loader2,
+  Filter,
+  TrendingUp,
+  Award,
+  X,
+  ChevronDown
 } from 'lucide-react'
 
 interface ParsedJobDetails {
@@ -107,13 +112,18 @@ const ResumeResults: React.FC<ResumeResultsProps> = ({
   onBack,
   onAddMoreResumes
 }) => {
-  type SortOption = 'score' | 'name'
+  type SortOption = 'score' | 'name' | 'email'
   type ScoreFilter = 'all' | 'high' | 'medium' | 'low'
+  type StatusFilter = 'all' | 'in-process' | 'accept' | 'reject'
+  type TopFilter = 'all' | 'top10' | 'top20' | 'top30' | 'top50'
 
   const [searchTerm, setSearchTerm] = useState('')
   const [scoreFilter, setScoreFilter] = useState<ScoreFilter>('all')
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
+  const [topFilter, setTopFilter] = useState<TopFilter>('all')
   const [sortBy, setSortBy] = useState<SortOption>('score')
   const [selectedResumes, setSelectedResumes] = useState<Set<string>>(new Set())
+  const [showFilters, setShowFilters] = useState(false)
 
   // Sending emails state
   const [isSending, setIsSending] = useState(false)
@@ -144,7 +154,8 @@ const ResumeResults: React.FC<ResumeResultsProps> = ({
     .filter(resume => {
       const matchesSearch =
         resume.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        resume.email.toLowerCase().includes(searchTerm.toLowerCase())
+        resume.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        resume.filename.toLowerCase().includes(searchTerm.toLowerCase())
 
       const matchesScoreFilter =
         scoreFilter === 'all' ||
@@ -152,14 +163,24 @@ const ResumeResults: React.FC<ResumeResultsProps> = ({
         (scoreFilter === 'medium' && resume.score >= 60 && resume.score < 80) ||
         (scoreFilter === 'low' && resume.score < 60)
 
-      return matchesSearch && matchesScoreFilter
+      const matchesStatusFilter =
+        statusFilter === 'all' ||
+        (resume.status || 'in-process') === statusFilter
+
+      return matchesSearch && matchesScoreFilter && matchesStatusFilter
     })
     .sort((a, b) => {
       if (sortBy === 'score') {
         return b.score - a.score
+      } else if (sortBy === 'email') {
+        return a.email.localeCompare(b.email)
       }
       return a.name.localeCompare(b.name)
     })
+    .slice(0, topFilter === 'all' ? undefined : 
+      topFilter === 'top10' ? 10 :
+      topFilter === 'top20' ? 20 :
+      topFilter === 'top30' ? 30 : 50)
 
   const averageScore =
     job.scoredResumes.length > 0
@@ -504,74 +525,210 @@ const ResumeResults: React.FC<ResumeResultsProps> = ({
           </div>
 
           <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">Score Distribution</h3>
-            <div className="space-y-3">
-              <div className="flex justify-between items-center">
-                <span className="text-sm text-green-600">Excellent (80+)</span>
-                <span className="font-medium">{scoreDistribution.high}</span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-sm text-yellow-600">Good (60-80)</span>
-                <span className="font-medium">{scoreDistribution.medium}</span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-sm text-red-600">Needs Review (&lt;60)</span>
-                <span className="font-medium">{scoreDistribution.low}</span>
-              </div>
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">Quick Filters</h3>
+            <div className="space-y-2">
+              <button
+                onClick={() => {
+                  setScoreFilter('high')
+                  setTopFilter('top20')
+                  setSortBy('score')
+                }}
+                className="w-full flex justify-between items-center p-3 rounded-lg hover:bg-green-50 border border-transparent hover:border-green-200 transition-all group"
+              >
+                <div className="flex items-center space-x-2">
+                  <div className="w-8 h-8 bg-green-100 rounded-lg flex items-center justify-center group-hover:bg-green-200">
+                    <TrendingUp className="w-4 h-4 text-green-600" />
+                  </div>
+                  <span className="text-sm font-medium text-gray-700">Top 20 Excellent</span>
+                </div>
+                <span className="text-sm font-bold text-green-600">{scoreDistribution.high}</span>
+              </button>
+
+              <button
+                onClick={() => {
+                  setScoreFilter('medium')
+                  setTopFilter('top30')
+                  setSortBy('score')
+                }}
+                className="w-full flex justify-between items-center p-3 rounded-lg hover:bg-yellow-50 border border-transparent hover:border-yellow-200 transition-all group"
+              >
+                <div className="flex items-center space-x-2">
+                  <div className="w-8 h-8 bg-yellow-100 rounded-lg flex items-center justify-center group-hover:bg-yellow-200">
+                    <Star className="w-4 h-4 text-yellow-600" />
+                  </div>
+                  <span className="text-sm font-medium text-gray-700">Top 30 Good</span>
+                </div>
+                <span className="text-sm font-bold text-yellow-600">{scoreDistribution.medium}</span>
+              </button>
+
+              <button
+                onClick={() => {
+                  setTopFilter('top50')
+                  setScoreFilter('all')
+                  setSortBy('score')
+                }}
+                className="w-full flex justify-between items-center p-3 rounded-lg hover:bg-blue-50 border border-transparent hover:border-blue-200 transition-all group"
+              >
+                <div className="flex items-center space-x-2">
+                  <div className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center group-hover:bg-blue-200">
+                    <Users className="w-4 h-4 text-blue-600" />
+                  </div>
+                  <span className="text-sm font-medium text-gray-700">Top 50 Overall</span>
+                </div>
+                <span className="text-sm font-bold text-blue-600">{Math.min(50, job.scoredResumes.length)}</span>
+              </button>
             </div>
           </div>
         </div>
 
-        {/* Filters & Search */}
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-6">
-          <div className="flex flex-wrap items-center justify-between gap-4">
-            <div className="flex items-center space-x-4">
-              <div className="relative">
+        {/* Enhanced Filters & Search */}
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 mb-6">
+          {/* Main Filter Bar */}
+          <div className="p-4 border-b border-gray-200">
+            <div className="flex flex-wrap items-center gap-3">
+              {/* Search */}
+              <div className="relative flex-1 min-w-[250px]">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
                 <input
                   type="text"
-                  placeholder="Search by name or email..."
+                  placeholder="Search by name, email, or filename..."
                   value={searchTerm}
                   onChange={e => setSearchTerm(e.target.value)}
-                  className="pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 />
               </div>
-              <select
-                value={scoreFilter}
-                onChange={e => setScoreFilter(e.target.value as ScoreFilter)}
-                className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              >
-                <option value="all">All Scores</option>
-                <option value="high">Excellent (80+)</option>
-                <option value="medium">Good (60-80)</option>
-                <option value="low">Needs Review (&lt;60)</option>
-              </select>
-            </div>
 
-            <div className="flex items-center space-x-4">
-              <div className="flex items-center space-x-2">
-                <span className="text-sm text-gray-600">Sort by:</span>
-                <select
-                  value={sortBy}
-                  onChange={e => setSortBy(e.target.value as SortOption)}
-                  className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              {/* Quick Filters */}
+              <div className="flex items-center gap-2 flex-wrap">
+                {/* Top Candidates Filter */}
+                <div className="relative">
+                  <TrendingUp className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+                  <select
+                    value={topFilter}
+                    onChange={e => setTopFilter(e.target.value as TopFilter)}
+                    className="pl-9 pr-8 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent appearance-none bg-white font-medium text-sm"
+                  >
+                    <option value="all">All Candidates</option>
+                    <option value="top10">Top 10</option>
+                    <option value="top20">Top 20</option>
+                    <option value="top30">Top 30</option>
+                    <option value="top50">Top 50</option>
+                  </select>
+                  <ChevronDown className="absolute right-2 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4 pointer-events-none" />
+                </div>
+
+                {/* Score Filter */}
+                <div className="relative">
+                  <Award className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+                  <select
+                    value={scoreFilter}
+                    onChange={e => setScoreFilter(e.target.value as ScoreFilter)}
+                    className="pl-9 pr-8 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent appearance-none bg-white font-medium text-sm"
+                  >
+                    <option value="all">All Scores</option>
+                    <option value="high">Excellent (80+)</option>
+                    <option value="medium">Good (60-80)</option>
+                    <option value="low">Needs Review (&lt;60)</option>
+                  </select>
+                  <ChevronDown className="absolute right-2 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4 pointer-events-none" />
+                </div>
+
+                {/* Status Filter */}
+                <div className="relative">
+                  <select
+                    value={statusFilter}
+                    onChange={e => setStatusFilter(e.target.value as StatusFilter)}
+                    className="pl-4 pr-8 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent appearance-none bg-white font-medium text-sm"
+                  >
+                    <option value="all">All Status</option>
+                    <option value="in-process">In Process</option>
+                    <option value="accept">Accepted</option>
+                    <option value="reject">Rejected</option>
+                  </select>
+                  <ChevronDown className="absolute right-2 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4 pointer-events-none" />
+                </div>
+
+                {/* More Filters Toggle */}
+                <button
+                  onClick={() => setShowFilters(!showFilters)}
+                  className={`flex items-center space-x-2 px-4 py-2.5 border rounded-lg font-medium text-sm transition-colors ${
+                    showFilters ? 'bg-blue-50 border-blue-300 text-blue-700' : 'border-gray-300 hover:bg-gray-50'
+                  }`}
                 >
-                  <option value="score">Resume Score</option>
-                  <option value="name">Name</option>
-                </select>
+                  <Filter className="w-4 h-4" />
+                  <span>More</span>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Extended Filters */}
+          {showFilters && (
+            <div className="p-4 bg-gray-50 border-b border-gray-200">
+              <div className="flex flex-wrap items-center gap-4">
+                <div className="flex items-center space-x-2">
+                  <span className="text-sm font-medium text-gray-700">Sort by:</span>
+                  <select
+                    value={sortBy}
+                    onChange={e => setSortBy(e.target.value as SortOption)}
+                    className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                  >
+                    <option value="score">Score (High to Low)</option>
+                    <option value="name">Name (A-Z)</option>
+                    <option value="email">Email (A-Z)</option>
+                  </select>
+                </div>
+
+                {filteredAndSortedResumes.length > 0 && (
+                  <button
+                    onClick={handleSelectAll}
+                    className="flex items-center space-x-2 px-3 py-2 border border-gray-300 rounded-lg hover:bg-white text-sm font-medium transition-colors"
+                  >
+                    {isAllFilteredSelected ? (
+                      <CheckSquare className="w-4 h-4 text-blue-600" />
+                    ) : (
+                      <Square className="w-4 h-4" />
+                    )}
+                    <span>Select All ({filteredAndSortedResumes.length})</span>
+                  </button>
+                )}
+
+                {/* Clear Filters */}
+                {(searchTerm || scoreFilter !== 'all' || statusFilter !== 'all' || topFilter !== 'all') && (
+                  <button
+                    onClick={() => {
+                      setSearchTerm('')
+                      setScoreFilter('all')
+                      setStatusFilter('all')
+                      setTopFilter('all')
+                    }}
+                    className="flex items-center space-x-2 px-3 py-2 text-sm text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                  >
+                    <X className="w-4 h-4" />
+                    <span>Clear Filters</span>
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Results Summary */}
+          <div className="px-4 py-3 bg-blue-50 border-b border-blue-100">
+            <div className="flex items-center justify-between text-sm">
+              <div className="flex items-center space-x-4">
+                <span className="font-medium text-blue-900">
+                  Showing {filteredAndSortedResumes.length} of {job.scoredResumes.length} candidates
+                </span>
+                {selectedResumes.size > 0 && (
+                  <span className="text-blue-700">
+                    • {selectedResumes.size} selected
+                  </span>
+                )}
               </div>
               {filteredAndSortedResumes.length > 0 && (
-                <button
-                  onClick={handleSelectAll}
-                  className="flex items-center space-x-2 px-3 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 text-sm"
-                >
-                  {isAllFilteredSelected ? (
-                    <CheckSquare className="w-4 h-4 text-blue-600" />
-                  ) : (
-                    <Square className="w-4 h-4" />
-                  )}
-                  <span>Select All Filtered</span>
-                </button>
+                <span className="text-blue-700">
+                  Avg Score: {(filteredAndSortedResumes.reduce((sum, r) => sum + r.score, 0) / filteredAndSortedResumes.length).toFixed(1)}
+                </span>
               )}
             </div>
           </div>

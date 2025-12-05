@@ -298,6 +298,32 @@ const HRInterviewApp = () => {
     setIsProcessing(false)
   }
 
+  const handleDeleteJob = async (jobId: string) => {
+    if (!user) return
+
+    try {
+      const response = await fetch(`${API_BASE}/jobs/${jobId}`, {
+        method: 'DELETE',
+        credentials: 'include',
+      })
+
+      if (!response.ok) {
+        throw new Error('Failed to delete job')
+      }
+
+      // Remove job from local state
+      setJobs(prevJobs => prevJobs.filter(job => job.jobId !== jobId))
+
+      // If the deleted job was selected, go back to jobs list
+      if (selectedJob?.jobId === jobId) {
+        handleBackToJobs()
+      }
+    } catch (error) {
+      console.error('Error deleting job:', error)
+      throw error
+    }
+  }
+
   const handleAddMoreResumes = () => {
     setCurrentState('upload')
   }
@@ -461,6 +487,7 @@ const HRInterviewApp = () => {
           loading={loading}
           onJobSelect={handleJobSelect}
           onNewJobClick={handleNewJobClick}
+          onDeleteJob={handleDeleteJob}
         />
       )
     
