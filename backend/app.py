@@ -10,7 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from config import settings
 from api.auth_route import router as auth_router
 from api.jobs_route import router as jobs_router
-from api.email_route import router as email_router
+from api.email_route_resend import router as email_router
 from api.protected_route import router as protected_router
 
 from dotenv import load_dotenv

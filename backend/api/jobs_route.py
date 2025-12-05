@@ -13,6 +13,7 @@ from db.vector_db     import index_resume_chunks, index_job_description_chunks
 from db.database      import fs, job_profiles
 from bson import ObjectId
 import io
+import httpx
 from utils.excel_parser import parse_excel
 from utils.drive_downloader import download_from_drive
 
@@ -20,6 +21,61 @@ router = APIRouter()
 
 # plain-text email regex
 EMAIL_RE = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
+
+async def download_resume_from_url(url: str) -> Tuple[bytes, str]:
+    """
+    Download a resume from any URL (Google Drive, direct links, etc.)
+    
+    Args:
+        url: URL to download from
+    
+    Returns:
+        Tuple of (file_content_bytes, file_extension)
+    
+    Raises:
+        Exception: If download fails
+    """
+    try:
+        # Check if it's a Google Drive URL
+        if 'drive.google.com' in url:
+            return await download_from_drive(url)
+        
+        # Handle direct URLs
+        async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
+            response = await client.get(url)
+            
+            if response.status_code != 200:
+                raise Exception(f'HTTP {response.status_code}: Failed to download from {url}')
+            
+            # Determine file extension from content-type or URL
+            content_type = response.headers.get('content-type', '').lower()
+            
+            if 'pdf' in content_type:
+                extension = '.pdf'
+            elif 'word' in content_type or 'docx' in content_type:
+                extension = '.docx'
+            elif 'text' in content_type:
+                extension = '.txt'
+            else:
+                # Try to guess from URL
+                url_lower = url.lower()
+                if '.pdf' in url_lower:
+                    extension = '.pdf'
+                elif '.docx' in url_lower or '.doc' in url_lower:
+                    extension = '.docx'
+                elif '.txt' in url_lower:
+                    extension = '.txt'
+                else:
+                    extension = '.pdf'  # default assumption
+            
+            return response.content, extension
+            
+    except httpx.TimeoutException:
+        raise Exception(f"Timeout downloading from {url}")
+    except httpx.RequestError as e:
+        raise Exception(f"Network error downloading from {url}: {str(e)}")
+    except Exception as e:
+        raise Exception(f"Failed to download from {url}: {str(e)}")
 
 async def read_and_parse(file: UploadFile) -> Tuple[str, str, bytes, Optional[str]]:
     """
@@ -363,6 +419,150 @@ async def download_resume(
             f"Resume not found: {str(e)}"
         )
 
+
+@router.post("/jobs/candidates", status_code=status.HTTP_201_CREATED)
+async def create_job_from_candidates(
+    description: str = Form(...),
+    candidates_data: str = Form(...),  # JSON string of candidate data
+    current_user: dict = Depends(get_current_user),
+) -> Dict[str, Any]:
+    """
+    Create a job from candidate data (parsed from Excel on frontend).
+    candidates_data should be JSON string containing array of {name, email, resumeLink}
+    """
+    import json
+    
+    try:
+        candidates = json.loads(candidates_data)
+    except json.JSONDecodeError:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid candidates data format")
+    
+    if not candidates or not isinstance(candidates, list):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Candidates data must be a non-empty array")
+    
+    recruiter_id = current_user["_id"]
+    
+    # Create job document
+    job_doc = {
+        "recruiterId": recruiter_id,
+        "description": description,
+        "files": [],
+        "scoredResumes": [],
+        "createdAt": datetime.utcnow(),
+    }
+    job_insert = job_profiles.insert_one(job_doc)
+    job_id = str(job_insert.inserted_id)
+    
+    # Index job description
+    index_job_description_chunks(job_id, description)
+    
+    stored_files = []
+    scored_resumes = []
+    errors = []
+    
+    # Process each candidate
+    for idx, candidate in enumerate(candidates):
+        try:
+            name = candidate.get('name', '').strip()
+            email = candidate.get('email', '').strip()
+            resume_link = candidate.get('resumeLink', '').strip()
+            
+            if not all([name, email, resume_link]):
+                errors.append({
+                    "index": idx,
+                    "name": name or "Unknown",
+                    "error": "Missing required fields (name, email, or resume link)"
+                })
+                continue
+            
+            # Download resume from the provided link
+            try:
+                resume_bytes, file_extension = await download_resume_from_url(resume_link)
+            except Exception as e:
+                errors.append({
+                    "index": idx,
+                    "name": name,
+                    "error": f"Failed to download resume: {str(e)}"
+                })
+                continue
+            
+            # Extract text based on file type
+            if file_extension == '.pdf':
+                text = await extract_pdf_text(resume_bytes, f"{name}_resume{file_extension}")
+            else:
+                # For non-PDF files, try to decode as text
+                try:
+                    text = resume_bytes.decode('utf-8', errors='ignore')
+                except:
+                    text = f"Resume content for {name} (binary file)"
+            
+            # Store in GridFS
+            filename = f"{name.replace(' ', '_')}_resume{file_extension}"
+            file_id = fs.put(
+                resume_bytes,
+                filename=filename,
+                content_type="application/pdf" if file_extension == '.pdf' else "application/octet-stream",
+                uploadDate=datetime.utcnow()
+            )
+            
+            resume_id = str(file_id)
+            stored_files.append({
+                "fileId": file_id,
+                "filename": filename,
+                "fileType": "application/pdf" if file_extension == '.pdf' else "application/octet-stream",
+            })
+            
+            # Index resume
+            index_resume_chunks(resume_id, text)
+            
+            # Score resume
+            score_result = await llm_score(
+                resume_id=resume_id,
+                filename=filename,
+                resume_text=text,
+                job_desc=description,
+                override_email=email  # Use the email from Excel
+            )
+            
+            # Use provided data as primary, LLM extraction as fallback
+            final_name = name or score_result.get("name", "Unknown")
+            final_email = email or score_result.get("email", "Not found")
+            
+            scored_resumes.append({
+                "resumeId": resume_id,
+                "filename": filename,
+                "name": final_name,
+                "email": final_email,
+                "score": score_result["score"],
+                "reasoning": score_result["reasoning"],
+                "text": text,
+            })
+            
+        except Exception as e:
+            errors.append({
+                "index": idx,
+                "name": candidate.get('name', 'Unknown'),
+                "error": str(e)
+            })
+    
+    # Update job with results
+    job_profiles.update_one(
+        {"_id": job_insert.inserted_id},
+        {"$set": {
+            "files": stored_files,
+            "scoredResumes": scored_resumes,
+        }}
+    )
+    
+    return {
+        "jobId": job_id,
+        "scoredResumes": scored_resumes,
+        "errors": errors,
+        "totalProcessed": len(candidates),
+        "successCount": len(scored_resumes),
+        "errorCount": len(errors),
+        "createdAt": job_doc["createdAt"].isoformat(),
+    }
 
 @router.post("/jobs/excel", status_code=status.HTTP_201_CREATED)
 async def create_job_from_excel(

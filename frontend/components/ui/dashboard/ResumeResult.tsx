@@ -27,11 +27,11 @@ interface ParsedJobDetails {
 
 const parseJobDetails = (description: string): ParsedJobDetails => {
   const details: ParsedJobDetails = {}
-  
+
   if (!description || typeof description !== 'string') {
     return details
   }
-  
+
   const lines = description.split(/\r?\n/).map(l => l.trim()).filter(Boolean)
 
   const isKeyLine = (key: string) =>
@@ -108,7 +108,7 @@ const ResumeResults: React.FC<ResumeResultsProps> = ({
 }) => {
   type SortOption = 'score' | 'name'
   type ScoreFilter = 'all' | 'high' | 'medium' | 'low'
-  
+
   const [searchTerm, setSearchTerm] = useState('')
   const [scoreFilter, setScoreFilter] = useState<ScoreFilter>('all')
   const [sortBy, setSortBy] = useState<SortOption>('score')
@@ -119,7 +119,7 @@ const ResumeResults: React.FC<ResumeResultsProps> = ({
   const [emailResults, setEmailResults] = useState<{
     sent: number
     failed: number
-    errors: Array<{ name: string; email: string; resume_id: string; error: string }>
+    errors?: Array<{ name: string; email: string; resume_id: string; error: string }>
   } | null>(null)
 
   // Resume viewing and downloading state
@@ -138,7 +138,7 @@ const ResumeResults: React.FC<ResumeResultsProps> = ({
     if (score >= 60) return 'Good'
     return 'Needs Review'
   }
-  
+
   const filteredAndSortedResumes = job.scoredResumes
     .filter(resume => {
       const matchesSearch =
@@ -203,7 +203,7 @@ const ResumeResults: React.FC<ResumeResultsProps> = ({
     filteredAndSortedResumes.length > 0 &&
     filteredAndSortedResumes.every(r => selectedResumes.has(r.resumeId))
 
-  // Send shortlist emails
+  // Send shortlist emails via Mailjet API
   const handleSendEmails = async () => {
     if (selectedResumes.size === 0) {
       alert('Please select at least one resume to send emails.')
@@ -214,32 +214,39 @@ const ResumeResults: React.FC<ResumeResultsProps> = ({
     setEmailResults(null)
 
     try {
+      // Call Mailjet email API
       const response = await fetch(`${API_BASE}/send-shortlist-emails`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        },
         credentials: 'include',
         body: JSON.stringify({
           job_id: job.jobId,
           resume_ids: Array.from(selectedResumes)
         })
       })
-      
+
       if (!response.ok) {
-        throw new Error('Failed to send emails')
+        const errorData = await response.json().catch(() => ({}))
+        throw new Error(errorData.detail || `Failed to send emails (${response.status})`)
       }
-      
+
       const result = await response.json()
       setEmailResults(result)
 
-      // Clear selections
+      // Show success notification
+      if (result.sent > 0) {
+        alert(`✅ Successfully sent ${result.sent} shortlist email${result.sent > 1 ? 's' : ''}!`)
+      }
+
+      // Clear selections after successful send
       setSelectedResumes(new Set())
     } catch (error: unknown) {
-      console.error(error)
-      if (error instanceof Error) {
-        alert(error.message)
-      } else {
-        alert('Error sending emails.')
-      }
+      console.error('Email sending error:', error)
+      const errorMessage = error instanceof Error ? error.message : 'Failed to send emails'
+      alert(`❌ ${errorMessage}`)
     } finally {
       setIsSending(false)
     }
@@ -250,22 +257,22 @@ const ResumeResults: React.FC<ResumeResultsProps> = ({
     try {
       setIsViewingResume(true)
       setCurrentResumeId(resume.resumeId)
-      
+
       const response = await fetch(`${API_BASE}/resume/${resume.resumeId}`, {
         credentials: 'include',
       })
-      
+
       if (!response.ok) {
         throw new Error('Failed to fetch resume')
       }
-      
+
       const blob = await response.blob()
       const url = URL.createObjectURL(blob)
-      
+
       window.open(url, '_blank')
-      
+
       setTimeout(() => URL.revokeObjectURL(url), 1000)
-      
+
     } catch (error) {
       console.error('Error viewing resume:', error)
       alert('Failed to view resume. Please try again.')
@@ -280,27 +287,27 @@ const ResumeResults: React.FC<ResumeResultsProps> = ({
     try {
       setIsDownloadingResume(true)
       setCurrentResumeId(resume.resumeId)
-      
+
       const response = await fetch(`${API_BASE}/resume/${resume.resumeId}/download`, {
         credentials: 'include',
       })
-      
+
       if (!response.ok) {
         throw new Error('Failed to download resume')
       }
-      
+
       const blob = await response.blob()
       const url = URL.createObjectURL(blob)
-      
+
       const link = document.createElement('a')
       link.href = url
       link.download = resume.filename || `${resume.name}_resume.pdf`
       document.body.appendChild(link)
       link.click()
       document.body.removeChild(link)
-      
+
       setTimeout(() => URL.revokeObjectURL(url), 1000)
-      
+
     } catch (error) {
       console.error('Error downloading resume:', error)
       alert('Failed to download resume. Please try again.')
@@ -356,7 +363,7 @@ const ResumeResults: React.FC<ResumeResultsProps> = ({
               {emailResults.failed > 0 && (
                 <p>❌ Failed to send: {emailResults.failed} emails</p>
               )}
-              {emailResults.errors.length > 0 && (
+              {emailResults.errors && emailResults.errors.length > 0 && (
                 <div className="mt-2">
                   <p className="font-medium">Errors:</p>
                   <ul className="list-disc list-inside">

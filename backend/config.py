@@ -23,8 +23,20 @@ class Settings:
         openai_api_key=os.getenv("OPENAI_API_KEY")
     )
     
-    MAILJET_SENDER_EMAIL = "akshatsrivastav38@gmail.com"
-    MAILJET_API_KEY    = os.getenv("MAILJET_API_KEY")    # e.g. "3c4792e776a3f20faae21f3845045a97"
+    # Resend Configuration
+    RESEND_API_KEY = os.getenv("RESEND_API_KEY")
+    RESEND_SENDER_EMAIL = os.getenv("RESEND_SENDER_EMAIL", "adnanali11875@gmail.com")
+    RESEND_SENDER_NAME = os.getenv("RESEND_SENDER_NAME", "HireHelper Team")
+    
+    # SendGrid Configuration
+    SENDGRID_API_KEY = os.getenv("SENDGRID_API_KEY")
+    SENDGRID_SENDER_EMAIL = os.getenv("SENDGRID_SENDER_EMAIL", "adnanali11875@gmail.com")
+    SENDGRID_SENDER_NAME = os.getenv("SENDGRID_SENDER_NAME", "HireHelper Team")
+    
+    # Mailjet Configuration (Backup)
+    MAILJET_SENDER_EMAIL = os.getenv("MAILJET_SENDER_EMAIL", "your_email@domain.com")
+    MAILJET_SENDER_NAME = os.getenv("MAILJET_SENDER_NAME", "HireHelper Team")
+    MAILJET_API_KEY    = os.getenv("MAILJET_API_KEY")
     MAILJET_SECRET_KEY = os.getenv("MAILJET_SECRET_KEY")
     DEEPGRAM_API_KEY = os.getenv("DEEPGRAM_API_KEY",)
     OPENAI_API_KEY=os.getenv("OPENAI_API_KEY")

@@ -157,13 +157,58 @@ const HRInterviewApp = () => {
     }
   }
 
+  // Create job from candidate data (Excel mode)
+  const createJobFromCandidates = async (description: string, candidatesData: any[]) => {
+    if (!user) return
+
+    try {
+      setIsUploading(true)
+      const formData = new FormData()
+      formData.append('description', description)
+      formData.append('candidates_data', JSON.stringify(candidatesData))
+
+      const response = await fetch(`${API_BASE}/jobs/candidates`, {
+        method: 'POST',
+        credentials: 'include',
+        body: formData,
+      })
+      if (!response.ok) throw new Error('Failed to create job from candidates')
+
+      const newJob = await response.json()
+      
+      // Set the new job as selected and show processing state
+      setSelectedJob(newJob)
+      setCurrentState('results')
+      setIsProcessing(true)
+      
+      // Fetch updated jobs list
+      await fetchJobs()
+      
+      // Simulate processing time and then stop processing indicator
+      setTimeout(() => {
+        setIsProcessing(false)
+      }, 3000)
+      
+      return newJob
+    } catch (error) {
+      console.error('Error creating job from candidates:', error)
+      alert('Error creating job from candidates. Please try again.')
+      setCurrentState('jobs')
+    } finally {
+      setIsUploading(false)
+    }
+  }
+
   // Handle upload submission - decides whether to create or update
-  const handleUploadSubmit = async (description: string, files: File[]) => {
-    if (selectedJob) {
-      // Update existing job
+  const handleUploadSubmit = async (description: string, files: File[], candidatesData?: any[]) => {
+    if (candidatesData && candidatesData.length > 0) {
+      // Excel mode - create job from candidate data
+      await createJobFromCandidates(description, candidatesData)
+    } else if (selectedJob) {
+      // Update existing job with PDF files
       await updateJob(selectedJob.jobId, description, files)
     } else {
-      // Create new job
+      // Create new job with PDF files
       await createJob(description, files)
     }
   }

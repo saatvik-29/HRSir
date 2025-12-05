@@ -17,8 +17,13 @@ PyMuPDF
 motor
 pinecone-client
 fastapi[standard]
-passlib                                                                                                                             
+passlib
 qdrant_client
 langchain_qdrant
 pypdf
 openai
+openpyxl
+mailjet-rest
+sendgrid
+resend
+httpx

@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Excel Test File Generator</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+</head>
+<body>
+    <h2>Generate Test Excel File for HireHelper</h2>
+    <button onclick="generateTestExcel()">Download Test Excel File</button>
+    
+    <script>
+        function generateTestExcel() {
+            // Sample candidate data
+            const testData = [
+                ['Name', 'Email', 'Resume Link'],
+                ['John Doe', 'john.doe@example.com', 'https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf'],
+                ['Jane Smith', 'jane.smith@example.com', 'https://www.africau.edu/images/default/sample.pdf'],
+                ['Mike Johnson', 'mike.johnson@example.com', 'https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf'],
+                ['Sarah Wilson', 'sarah.wilson@example.com', 'https://www.africau.edu/images/default/sample.pdf'],
+                ['David Brown', 'david.brown@example.com', 'https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf']
+            ];
+
+            // Create workbook and worksheet
+            const ws = XLSX.utils.aoa_to_sheet(testData);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, 'Candidates');
+
+            // Download the file
+            XLSX.writeFile(wb, 'test-candidates.xlsx');
+        }
+    </script>
+</body>
+</html>
