@@ -104,7 +104,35 @@ git clone <repository-url>
 cd hr-agent-master
 ```
 
-#### 2. Backend Setup
+#### 2. Start Qdrant Vector Database
+
+**Option A: Using Docker (Recommended)**
+```bash
+# Windows
+start-qdrant.bat
+
+# macOS/Linux
+chmod +x start-qdrant.sh
+./start-qdrant.sh
+```
+
+**Option B: Manual Docker Compose**
+```bash
+docker-compose -f docker-compose.qdrant.yml up -d
+```
+
+**Option C: Use Qdrant Cloud**
+- Sign up at https://cloud.qdrant.io/
+- Create a cluster and get your credentials
+- Update `.env` with your Qdrant Cloud URL and API key
+
+Verify Qdrant is running:
+- Dashboard: http://localhost:6333/dashboard
+- API: http://localhost:6333
+
+For detailed setup instructions, see [QDRANT_SETUP.md](QDRANT_SETUP.md)
+
+#### 3. Backend Setup
 ```bash
 cd backend
 
@@ -121,7 +149,7 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-#### 3. Frontend Setup
+#### 4. Frontend Setup
 ```bash
 cd frontend
 
@@ -185,6 +213,15 @@ NEXT_PUBLIC_DEEPGRAM_API_KEY=your_deepgram_api_key
 ```
 
 ### Running the Application
+
+#### 0. Ensure Qdrant is Running
+```bash
+# Check if Qdrant is running
+curl http://localhost:6333/
+
+# If not running, start it
+docker-compose -f docker-compose.qdrant.yml up -d
+```
 
 #### 1. Start Backend Server
 ```bash

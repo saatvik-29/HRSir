@@ -5,9 +5,9 @@ import {
   ArrowLeft,
   FileSpreadsheet,
   FileText,
-  Download,
-  AlertCircle
+  Download
 } from 'lucide-react'
+import JobPostingForm from './JobPostingForm'
 
 interface ParsedJobDetails {
   jobTitle?: string
@@ -93,14 +93,15 @@ const UploadResume: React.FC<UploadResumeProps> = ({
   onBack,
   onSubmit
 }) => {
-  // const [newJobDescription, setNewJobDescription] = useState('') // Removed unused variable
-  const [jobTitle, setJobTitle] = useState('')
-  const [jobType, setJobType] = useState('')
-  const [duration, setDuration] = useState('')
-  const [skillsRequired, setSkillsRequired] = useState('')
-  const [experienceRequired, setExperienceRequired] = useState('')
-  const [basicRequirements, setBasicRequirements] = useState('')
-  const [additionalNotes, setAdditionalNotes] = useState('')
+  const [formData, setFormData] = useState({
+    jobTitle: '',
+    jobType: '',
+    duration: '',
+    skillsRequired: '',
+    experienceRequired: '',
+    basicRequirements: '',
+    additionalNotes: ''
+  })
   const [selectedFiles, setSelectedFiles] = useState<File[]>([])
   const [uploadMode, setUploadMode] = useState<'pdf' | 'excel'>('pdf')
   const [excelFile, setExcelFile] = useState<File | null>(null)
@@ -135,26 +136,7 @@ Mike Johnson,mike.johnson@example.com,https://drive.google.com/file/d/YOUR_FILE_
     window.URL.revokeObjectURL(url)
   }
 
-  // Prefill from draft saved in JobsGrid modal
-  React.useEffect(() => {
-    if (!selectedJob) {
-      try {
-        const raw = localStorage.getItem('draftJobForm')
-        if (raw) {
-          const draft = JSON.parse(raw) as Record<string, string>
-          setJobTitle(draft.jobTitle || '')
-          setJobType(draft.jobType || '')
-          setDuration(draft.duration || '')
-          setSkillsRequired(draft.skillsRequired || '')
-          setExperienceRequired(draft.experienceRequired || '')
-          setBasicRequirements(draft.basicRequirements || '')
-          setAdditionalNotes(draft.additionalNotes || '')
-          // setNewJobDescription(draft.description || '') // Removed unused variable
-          localStorage.removeItem('draftJobForm')
-        }
-      } catch { }
-    }
-  }, [selectedJob])
+  // No need for draft logic anymore - users come directly to this page
 
   const handleSubmit = async () => {
     // Validation based on upload mode
@@ -172,48 +154,50 @@ Mike Johnson,mike.johnson@example.com,https://drive.google.com/file/d/YOUR_FILE_
 
     if (!selectedJob) {
       // Validate required fields for new job creation
-      if (!jobTitle.trim()) {
+      if (!formData.jobTitle.trim()) {
         alert('Please enter a Job Title')
         return
       }
-      if (!jobType) {
+      if (!formData.jobType) {
         alert('Please select a Job Type')
         return
       }
-      if (!skillsRequired.trim()) {
+      if (!formData.skillsRequired.trim()) {
         alert('Please enter Skills Required')
         return
       }
-      if (!experienceRequired.trim()) {
+      if (!formData.experienceRequired.trim()) {
         alert('Please enter Experience Required')
         return
       }
-      if (!basicRequirements.trim()) {
+      if (!formData.basicRequirements.trim()) {
         alert('Please enter Basic Requirements')
         return
       }
     }
 
-    const description = selectedJob ? selectedJob.description : `Job Title: ${jobTitle}
-Job Type: ${jobType}
-Duration: ${duration}
-Skills Required: ${skillsRequired}
-Experience Required: ${experienceRequired}
-Basic Requirements: ${basicRequirements}
-${additionalNotes ? `\nAdditional Notes: ${additionalNotes}` : ''}`
+    const description = selectedJob ? selectedJob.description : `Job Title: ${formData.jobTitle}
+Job Type: ${formData.jobType}
+Duration: ${formData.duration}
+Skills Required: ${formData.skillsRequired}
+Experience Required: ${formData.experienceRequired}
+Basic Requirements: ${formData.basicRequirements}
+${formData.additionalNotes ? `\nAdditional Notes: ${formData.additionalNotes}` : ''}`
 
     // Pass Excel file if using Excel mode
     const excelFileToUpload = uploadMode === 'excel' && excelFile ? excelFile : undefined
     await onSubmit(description, selectedFiles, excelFileToUpload)
 
     // Reset form
-    setJobTitle('')
-    setJobType('')
-    setDuration('')
-    setSkillsRequired('')
-    setExperienceRequired('')
-    setBasicRequirements('')
-    setAdditionalNotes('')
+    setFormData({
+      jobTitle: '',
+      jobType: '',
+      duration: '',
+      skillsRequired: '',
+      experienceRequired: '',
+      basicRequirements: '',
+      additionalNotes: ''
+    })
     setSelectedFiles([])
     setExcelFile(null)
   }
@@ -343,130 +327,11 @@ ${additionalNotes ? `\nAdditional Notes: ${additionalNotes}` : ''}`
                   )}
                 </div>
               ) : (
-                <div className="space-y-6">
-                  <h3 className="text-lg font-semibold text-gray-900 mb-4">Job Details</h3>
-
-                  {/* Job Title */}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Job Title *
-                    </label>
-                    <input
-                      type="text"
-                      value={jobTitle}
-                      onChange={(e) => setJobTitle(e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      placeholder="e.g., Senior Software Engineer"
-                    />
-                  </div>
-
-                  {/* Job Type */}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Job Type *
-                    </label>
-                    <select
-                      value={jobType}
-                      onChange={(e) => setJobType(e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    >
-                      <option value="">Select job type</option>
-                      <option value="Full-time">Full-time</option>
-                      <option value="Part-time">Part-time</option>
-                      <option value="Contract">Contract</option>
-                      <option value="Internship">Internship</option>
-                      <option value="Freelance">Freelance</option>
-                    </select>
-                  </div>
-
-                  {/* Duration */}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Duration
-                    </label>
-                    <input
-                      type="text"
-                      value={duration}
-                      onChange={(e) => setDuration(e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      placeholder="e.g., 6 months, Permanent, etc."
-                    />
-                  </div>
-
-                  {/* Skills Required */}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Skills Required *
-                    </label>
-                    <textarea
-                      value={skillsRequired}
-                      onChange={(e) => setSkillsRequired(e.target.value)}
-                      rows={3}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      placeholder="e.g., JavaScript, React, Node.js, Python, SQL"
-                    />
-                    <p className="text-xs text-gray-500 mt-1">Separate skills with commas</p>
-                  </div>
-
-                  {/* Experience Required */}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Experience Required *
-                    </label>
-                    <input
-                      type="text"
-                      value={experienceRequired}
-                      onChange={(e) => setExperienceRequired(e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      placeholder="e.g., 3-5 years, Entry level, Senior level"
-                    />
-                  </div>
-
-                  {/* Basic Requirements */}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Basic Requirements *
-                    </label>
-                    <textarea
-                      value={basicRequirements}
-                      onChange={(e) => setBasicRequirements(e.target.value)}
-                      rows={4}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      placeholder="• Bachelor's degree in Computer Science or related field\n• Strong problem-solving skills\n• Excellent communication abilities\n• Team collaboration experience"
-                    />
-                    <p className="text-xs text-gray-500 mt-1">Use bullet points (•) for better formatting</p>
-                  </div>
-
-                  {/* Additional Notes */}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Additional Notes
-                    </label>
-                    <textarea
-                      value={additionalNotes}
-                      onChange={(e) => setAdditionalNotes(e.target.value)}
-                      rows={3}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      placeholder="Any additional information about the role, company culture, benefits, etc."
-                    />
-                  </div>
-                </div>
-              )}
-
-              {/* Preview Section for New Jobs */}
-              {!selectedJob && (jobTitle || jobType || skillsRequired || experienceRequired || basicRequirements) && (
-                <div className="mt-6 bg-gray-50 p-4 rounded-lg">
-                  <h4 className="font-medium text-gray-900 mb-3">Job Description Preview</h4>
-                  <div className="text-sm text-gray-700 whitespace-pre-wrap bg-white p-3 rounded border">
-                    {`Job Title: ${jobTitle}
-Job Type: ${jobType}
-Duration: ${duration}
-Skills Required: ${skillsRequired}
-Experience Required: ${experienceRequired}
-Basic Requirements: ${basicRequirements}
-${additionalNotes ? `\nAdditional Notes: ${additionalNotes}` : ''}`}
-                  </div>
-                </div>
+                <JobPostingForm
+                  initialData={formData}
+                  showPreview={false}
+                  onDataChange={setFormData}
+                />
               )}
             </div>
           </div>

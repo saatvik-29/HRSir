@@ -930,3 +930,47 @@ async def update_candidate_status(
         "resumeId": resume_id,
         "newStatus": request.status.value
     }
+
+@router.delete("/jobs/{job_id}", status_code=status.HTTP_200_OK)
+async def delete_job(
+    job_id: str,
+    current_user: dict = Depends(get_current_user),
+) -> Dict[str, Any]:
+    """
+    Delete a job and all its associated data (resumes, files, etc.)
+    """
+    # Validate job ID format
+    try:
+        job_obj_id = ObjectId(job_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid job ID format")
+    
+    # Find the job and verify ownership
+    job = job_profiles.find_one({"_id": job_obj_id})
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    
+    if job["recruiterId"] != current_user["_id"]:
+        raise HTTPException(status_code=403, detail="Not authorized to delete this job")
+    
+    # Delete all associated files from GridFS
+    files = job.get("files", [])
+    for file_info in files:
+        try:
+            file_id = file_info.get("fileId")
+            if file_id:
+                fs.delete(file_id)
+        except Exception as e:
+            print(f"Warning: Failed to delete file {file_id}: {e}")
+    
+    # Delete the job document
+    result = job_profiles.delete_one({"_id": job_obj_id})
+    
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=500, detail="Failed to delete job")
+    
+    return {
+        "message": "Job deleted successfully",
+        "jobId": job_id,
+        "deletedFiles": len(files)
+    }
