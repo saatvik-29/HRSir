@@ -39,18 +39,14 @@ def create_interview_link(company_name: str, job_id: str, resume_id: str, fronte
     # Clean company name for URL (remove spaces, special chars, make lowercase)
     clean_company = re.sub(r'[^a-zA-Z0-9]', '', company_name.lower())
     
-    # Create the new URL format: www.companyname.PaceIT.com
-    base_domain = f"www.{clean_company}.{org_name.lower()}.com"
+    # Create the subdomain format: companyname.paceit.com
+    base_domain = f"{clean_company}.{org_name.lower()}.com"
     
-    # For development, we'll use the original frontend URL with a special path
-    # In production, you would set up the actual subdomain routing
-    if "localhost" in frontend_url or "127.0.0.1" in frontend_url:
-        # Development mode: use original URL with company parameter
-        interview_link = f"{frontend_url}/interview?company={clean_company}&jobId={job_id}&resumeId={resume_id}"
-    else:
-        # Production mode: use the subdomain format
-        protocol = "https://" if "https" in frontend_url else "http://"
-        interview_link = f"{protocol}{base_domain}/interview?jobId={job_id}&resumeId={resume_id}"
+    # Determine protocol
+    protocol = "https://" if "https" in frontend_url else "http://"
+    
+    # Use the same format for both development and production
+    interview_link = f"{protocol}{base_domain}/interview?jobId={job_id}&resumeId={resume_id}"
     
     return interview_link
 

@@ -5,14 +5,10 @@ Modified the interview link generation to include company names in the URL struc
 
 ## New URL Format
 
-### Development Mode (localhost)
+### URL Format (Development & Production)
 ```
-http://localhost:3000/interview?company=google&jobId=123&resumeId=456
-```
-
-### Production Mode
-```
-https://www.google.paceit.com/interview?jobId=123&resumeId=456
+http://google.paceit.com/interview?jobId=123&resumeId=456
+https://google.paceit.com/interview?jobId=123&resumeId=456
 ```
 
 ## Implementation Details
@@ -54,20 +50,20 @@ patterns = [
 
 ## Example Extractions
 
-| Job Description | Extracted Company | Generated URL (Dev) |
-|----------------|-------------------|---------------------|
-| "Company: Google Inc" | Google | `localhost:3000/interview?company=google&jobId=123&resumeId=456` |
-| "Join Microsoft team" | Microsoft | `localhost:3000/interview?company=microsoft&jobId=123&resumeId=456` |
-| "At Apple, we are seeking..." | Apple | `localhost:3000/interview?company=apple&jobId=123&resumeId=456` |
-| "Organization: Tesla Motors" | Tesla Motors | `localhost:3000/interview?company=teslamotors&jobId=123&resumeId=456` |
+| Job Description | Extracted Company | Generated URL |
+|----------------|-------------------|---------------|
+| "Company: Google Inc" | Google | `http://google.paceit.com/interview?jobId=123&resumeId=456` |
+| "Join Microsoft team" | Microsoft | `http://microsoft.paceit.com/interview?jobId=123&resumeId=456` |
+| "At Apple, we are seeking..." | Apple | `http://apple.paceit.com/interview?jobId=123&resumeId=456` |
+| "Organization: Tesla Motors" | Tesla Motors | `http://teslamotors.paceit.com/interview?jobId=123&resumeId=456` |
 
 ## Production URLs
 
-| Company | Production URL |
-|---------|----------------|
-| Google | `https://www.google.paceit.com/interview?jobId=123&resumeId=456` |
-| Microsoft | `https://www.microsoft.paceit.com/interview?jobId=123&resumeId=456` |
-| Amazon Web Services | `https://www.amazonwebservices.paceit.com/interview?jobId=123&resumeId=456` |
+| Company | Generated URL |
+|---------|---------------|
+| Google | `https://google.paceit.com/interview?jobId=123&resumeId=456` |
+| Microsoft | `https://microsoft.paceit.com/interview?jobId=123&resumeId=456` |
+| Amazon Web Services | `https://amazonwebservices.paceit.com/interview?jobId=123&resumeId=456` |
 
 ## Testing
 Created `test_company_url_generation.py` to verify:
@@ -82,9 +78,30 @@ The organization name is configurable via the `ORG_NAME` environment variable:
 - Can be changed to any organization name
 - Automatically converts to lowercase for URL generation
 
+## Local Development Setup
+
+For the subdomain URLs to work in development, you need to set up local DNS resolution:
+
+### Option 1: Hosts File (Recommended for Testing)
+Add entries to your hosts file (`C:\Windows\System32\drivers\etc\hosts` on Windows, `/etc/hosts` on Mac/Linux):
+
+```
+127.0.0.1 google.paceit.com
+127.0.0.1 microsoft.paceit.com
+127.0.0.1 apple.paceit.com
+127.0.0.1 company.paceit.com
+```
+
+### Option 2: Wildcard DNS (Advanced)
+Set up a local DNS server that resolves `*.paceit.com` to `127.0.0.1`.
+
+### Option 3: Production DNS
+Use actual DNS records pointing to your development server.
+
 ## Benefits
 1. **Personalized Experience**: Each company gets their own branded URL
 2. **Professional Appearance**: URLs look more professional and company-specific
 3. **Flexible Configuration**: Easy to change organization name via environment variables
 4. **Automatic Detection**: No manual input required - extracts company from job descriptions
 5. **Fallback Support**: Gracefully handles cases where company name isn't found
+6. **Consistent Format**: Same subdomain structure in both development and production
