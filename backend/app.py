@@ -12,6 +12,7 @@ from api.auth_route import router as auth_router
 from api.jobs_route import router as jobs_router
 from api.email_route_resend import router as email_router
 from api.protected_route import router as protected_router
+from api.email_templates_route import router as email_templates_router
 
 from dotenv import load_dotenv
 
@@ -31,6 +32,7 @@ app.include_router(auth_router, prefix="/auth")
 app.include_router(protected_router)
 app.include_router(jobs_router)
 app.include_router(email_router)
+app.include_router(email_templates_router)
 
 
 if __name__ == "__main__":

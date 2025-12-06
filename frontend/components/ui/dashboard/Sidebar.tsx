@@ -52,8 +52,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentSection, onSectionChange }) =>
       label: 'Email Templates',
       icon: Mail,
       description: 'Customize emails',
-      available: false,
-      comingSoon: true
+      available: true
     },
     {
       id: 'reports',

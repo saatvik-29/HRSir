@@ -16,6 +16,7 @@ EMAIL_REGEX = re.compile(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$')
 class ShortlistEmailRequest(BaseModel):
     job_id: str
     resume_ids: List[str]
+    template_id: str = "shortlist-default"  # Default template
 
 def validate_email(email: str) -> bool:
     """Validate email format"""
@@ -62,6 +63,161 @@ def create_interview_link(company_name: str, job_id: str, resume_id: str) -> str
     interview_link = f"{protocol}{base_domain}/interview?jobId={job_id}&resumeId={resume_id}"
     
     return interview_link
+
+def create_rejection_email_html(candidate_name: str, job_description: str = "") -> str:
+    """Create rejection email template"""
+    company_name = extract_company_name_from_description(job_description)
+    
+    return f"""
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Update on Your Application</title>
+    </head>
+    <body style="margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f8fafc;">
+        <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);">
+            <div style="background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%); padding: 40px 30px; text-align: center;">
+                <h1 style="color: #ffffff; margin: 0; font-size: 28px; font-weight: 700;">Update on Your Application</h1>
+            </div>
+            <div style="padding: 40px 30px;">
+                <h2 style="color: #1a202c; margin: 0 0 20px 0; font-size: 24px; font-weight: 600;">Dear {candidate_name},</h2>
+                <p style="color: #4a5568; line-height: 1.6; font-size: 16px; margin: 0 0 20px 0;">
+                    Thank you for taking the time to apply for the position at {company_name} and for your interest in joining our team.
+                </p>
+                <p style="color: #4a5568; line-height: 1.6; font-size: 16px; margin: 0 0 20px 0;">
+                    After careful consideration of all applications, we regret to inform you that we have decided to move forward with other candidates whose qualifications more closely match our current needs.
+                </p>
+                <p style="color: #4a5568; line-height: 1.6; font-size: 16px; margin: 0 0 20px 0;">
+                    We were impressed by your background and experience, and we encourage you to apply for future openings that match your skills and career goals.
+                </p>
+                <p style="color: #4a5568; line-height: 1.6; font-size: 16px; margin: 30px 0 0 0;">
+                    We wish you all the best in your job search and future professional endeavors.
+                </p>
+                <div style="text-align: center; margin-top: 40px;">
+                    <p style="color: #6b7280; font-size: 16px; margin: 0; font-weight: 500;">
+                        Best regards,<br>
+                        <span style="color: #6366f1; font-weight: 600;">The {company_name} Team</span>
+                    </p>
+                </div>
+            </div>
+            <div style="background-color: #f9fafb; padding: 25px 30px; text-align: center; border-top: 1px solid #e5e7eb;">
+                <p style="color: #9ca3af; font-size: 12px; margin: 0; line-height: 1.4;">
+                    This is an automated message from HireHelper. Please do not reply to this email.
+                </p>
+            </div>
+        </div>
+    </body>
+    </html>
+    """
+
+def create_interview_invitation_html(candidate_name: str, job_id: str, resume_id: str, job_description: str = "") -> str:
+    """Create interview invitation email template"""
+    company_name = extract_company_name_from_description(job_description)
+    interview_link = create_interview_link(company_name, job_id, resume_id)
+    
+    return f"""
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0;">
+        <title>Interview Invitation</title>
+    </head>
+    <body style="margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f8fafc;">
+        <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);">
+            <div style="background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%); padding: 40px 30px; text-align: center;">
+                <h1 style="color: #ffffff; margin: 0; font-size: 28px; font-weight: 700;">Interview Invitation</h1>
+            </div>
+            <div style="padding: 40px 30px;">
+                <h2 style="color: #1a202c; margin: 0 0 20px 0; font-size: 24px; font-weight: 600;">Dear {candidate_name},</h2>
+                <p style="color: #4a5568; line-height: 1.6; font-size: 16px; margin: 0 0 20px 0;">
+                    We are pleased to invite you for an interview for the position at {company_name}.
+                </p>
+                <div style="background-color: #eff6ff; border-radius: 8px; padding: 25px; margin: 30px 0; border-left: 4px solid #3b82f6;">
+                    <h3 style="color: #1e40af; margin: 0 0 15px 0; font-size: 18px; font-weight: 600;">Interview Details</h3>
+                    <ul style="color: #374151; margin: 0; padding-left: 20px; line-height: 1.6;">
+                        <li style="margin-bottom: 8px;">Format: Online Interview</li>
+                        <li style="margin-bottom: 8px;">Please confirm your availability</li>
+                        <li style="margin-bottom: 8px;">Click the link below to access the interview portal</li>
+                    </ul>
+                </div>
+                <div style="text-align: center; margin: 30px 0;">
+                    <a href="{interview_link}" 
+                       style="display: inline-block; background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%); 
+                              color: #ffffff; text-decoration: none; padding: 15px 30px; border-radius: 8px; 
+                              font-weight: 600; font-size: 16px; box-shadow: 0 4px 6px rgba(59, 130, 246, 0.25);">
+                        Access Interview Portal
+                    </a>
+                </div>
+                <p style="color: #4a5568; line-height: 1.6; font-size: 16px; margin: 30px 0 0 0;">
+                    We look forward to speaking with you!
+                </p>
+                <div style="text-align: center; margin-top: 40px;">
+                    <p style="color: #6b7280; font-size: 16px; margin: 0; font-weight: 500;">
+                        Best regards,<br>
+                        <span style="color: #3b82f6; font-weight: 600;">The {company_name} Team</span>
+                    </p>
+                </div>
+            </div>
+            <div style="background-color: #f9fafb; padding: 25px 30px; text-align: center; border-top: 1px solid #e5e7eb;">
+                <p style="color: #9ca3af; font-size: 12px; margin: 0; line-height: 1.4;">
+                    This is an automated message from HireHelper. Please do not reply to this email.
+                </p>
+            </div>
+        </div>
+    </body>
+    </html>
+    """
+
+def create_followup_email_html(candidate_name: str, job_description: str = "") -> str:
+    """Create follow-up email template"""
+    company_name = extract_company_name_from_description(job_description)
+    
+    return f"""
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Thank You for Your Application</title>
+    </head>
+    <body style="margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f8fafc;">
+        <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);">
+            <div style="background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%); padding: 40px 30px; text-align: center;">
+                <h1 style="color: #ffffff; margin: 0; font-size: 28px; font-weight: 700;">Thank You!</h1>
+            </div>
+            <div style="padding: 40px 30px;">
+                <h2 style="color: #1a202c; margin: 0 0 20px 0; font-size: 24px; font-weight: 600;">Dear {candidate_name},</h2>
+                <p style="color: #4a5568; line-height: 1.6; font-size: 16px; margin: 0 0 20px 0;">
+                    Thank you for your application for the position at {company_name}.
+                </p>
+                <p style="color: #4a5568; line-height: 1.6; font-size: 16px; margin: 0 0 20px 0;">
+                    We have received your application and our hiring team is currently reviewing all submissions. We appreciate your interest in joining our team.
+                </p>
+                <p style="color: #4a5568; line-height: 1.6; font-size: 16px; margin: 0 0 20px 0;">
+                    You can expect to hear from us within the next 5-7 business days regarding the next steps in the recruitment process.
+                </p>
+                <p style="color: #4a5568; line-height: 1.6; font-size: 16px; margin: 30px 0 0 0;">
+                    If you have any questions in the meantime, please don't hesitate to reach out.
+                </p>
+                <div style="text-align: center; margin-top: 40px;">
+                    <p style="color: #6b7280; font-size: 16px; margin: 0; font-weight: 500;">
+                        Best regards,<br>
+                        <span style="color: #8b5cf6; font-weight: 600;">The {company_name} Team</span>
+                    </p>
+                </div>
+            </div>
+            <div style="background-color: #f9fafb; padding: 25px 30px; text-align: center; border-top: 1px solid #e5e7eb;">
+                <p style="color: #9ca3af; font-size: 12px; margin: 0; line-height: 1.4;">
+                    This is an automated message from HireHelper. Please do not reply to this email.
+                </p>
+            </div>
+        </div>
+    </body>
+    </html>
+    """
 
 def create_shortlist_email_html(candidate_name: str, job_id: str, resume_id: str, job_description: str = "") -> str:
     """Create beautiful HTML email template for shortlist notification"""
@@ -288,9 +444,23 @@ async def send_shortlist_emails(
                 failed_count += 1
                 continue
             
-            # Prepare email content
-            html_content = create_shortlist_email_html(candidate_name, request.job_id, resume["resumeId"], job.get("description", ""))
-            subject = "🎉 Congratulations! You've Been Shortlisted"
+            # Prepare email content based on template
+            if request.template_id == "shortlist-default":
+                html_content = create_shortlist_email_html(candidate_name, request.job_id, resume["resumeId"], job.get("description", ""))
+                subject = "🎉 Congratulations! You've Been Shortlisted"
+            elif request.template_id == "rejection-polite":
+                html_content = create_rejection_email_html(candidate_name, job.get("description", ""))
+                subject = "Update on Your Application"
+            elif request.template_id == "interview-invitation":
+                html_content = create_interview_invitation_html(candidate_name, request.job_id, resume["resumeId"], job.get("description", ""))
+                subject = "Interview Invitation"
+            elif request.template_id == "follow-up":
+                html_content = create_followup_email_html(candidate_name, job.get("description", ""))
+                subject = "Thank You for Your Application"
+            else:
+                # Default to shortlist template
+                html_content = create_shortlist_email_html(candidate_name, request.job_id, resume["resumeId"], job.get("description", ""))
+                subject = "🎉 Congratulations! You've Been Shortlisted"
             
             # Send email via Resend
             success = send_email_resend(candidate_email, candidate_name, subject, html_content)

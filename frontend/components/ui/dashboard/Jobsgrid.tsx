@@ -80,33 +80,24 @@ const JobsGrid: React.FC<JobsGridProps> = ({
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <div className="bg-white shadow-sm border-b">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center py-4">
-            <div className="flex items-center space-x-3">
-              <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
-                <Users className="w-5 h-5 text-white" />
-              </div>
-              <div>
-                <h1 className="text-xl font-semibold text-gray-900">HireHelper</h1>
-                <p className="text-sm text-gray-500">Welcome, {user.name}</p>
-              </div>
-            </div>
-            <button
-              onClick={onNewJobClick}
-              className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center space-x-2 transition-colors"
-            >
-              <Plus className="w-4 h-4" />
-              <span>New Job</span>
-            </button>
-          </div>
+    <div className="p-8 max-w-7xl mx-auto">
+      {/* Header with New Job Button */}
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Job Postings</h1>
+          <p className="text-gray-600 mt-1">Manage and track your job openings</p>
         </div>
+        <button
+          onClick={onNewJobClick}
+          className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2.5 rounded-lg flex items-center space-x-2 transition-colors shadow-sm"
+        >
+          <Plus className="w-4 h-4" />
+          <span>New Job</span>
+        </button>
       </div>
 
       {/* Search and Filter */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+      <div className="mb-6">
         <div className="flex items-center space-x-4 mb-6">
           <div className="relative flex-1 max-w-md">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
@@ -237,7 +228,7 @@ const JobsGrid: React.FC<JobsGridProps> = ({
         )}
 
         {!loading && filteredJobs.length === 0 && (
-          <div className="text-center py-12">
+          <div className="text-center py-12 bg-white rounded-lg border border-gray-200">
             <FileText className="w-12 h-12 text-gray-400 mx-auto mb-4" />
             <h3 className="text-lg font-medium text-gray-900 mb-2">No jobs found</h3>
             <p className="text-gray-500 mb-4">

@@ -13,8 +13,9 @@ users_collection  = auth_db["users"]
 tokens_collection = auth_db["refresh_tokens"]
 
 # Domain collections
-job_profiles      = app_db["job_profiles"]        # ← add this
+job_profiles      = app_db["job_profiles"]
 resume_coll       = app_db["resume_submissions"]
 fs                = GridFS(app_db)
 interview_scores  = app_db["interview_scores"] 
 interview_sessions = app_db["interview_sessions"]
+email_templates   = app_db["email_templates"]  # User-specific email templates

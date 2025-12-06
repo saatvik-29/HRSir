@@ -8,6 +8,8 @@ import UploadResume from '@/components/ui/dashboard/UploadResume'
 import ResumeResults from '@/components/ui/dashboard/ResumeResult'
 import Sidebar from '@/components/ui/dashboard/Sidebar'
 import Breadcrumb from '@/components/ui/dashboard/Breadcrumb'
+import DashboardHome from '@/components/ui/dashboard/DashboardHome'
+import EmailTemplates from '@/components/ui/dashboard/EmailTemplates'
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL
 
@@ -28,13 +30,13 @@ interface Job {
   scoredResumes: Resume[]
 }
 
-type AppState = 'jobs' | 'upload' | 'results'
+type AppState = 'dashboard' | 'jobs' | 'upload' | 'results' | 'email-templates'
 
 const HRInterviewApp = () => {
   const { user, ready } = useContext(AuthContext)
   const [jobs, setJobs] = useState<Job[]>([])
   const [selectedJob, setSelectedJob] = useState<Job | null>(null)
-  const [currentState, setCurrentState] = useState<AppState>('jobs')
+  const [currentState, setCurrentState] = useState<AppState>('dashboard')
   const [isUploading, setIsUploading] = useState(false)
   const [isProcessing, setIsProcessing] = useState(false)
   const [loading, setLoading] = useState(true)
@@ -402,6 +404,22 @@ const HRInterviewApp = () => {
     setIsProcessing(false)
   }
 
+  const handleBackToDashboard = () => {
+    setSelectedJob(null)
+    setCurrentState('dashboard')
+    setIsProcessing(false)
+  }
+
+  const handleNavigateToJobs = () => {
+    setCurrentState('jobs')
+    setSidebarSection('jobs')
+  }
+
+  const handleNavigateToEmailTemplates = () => {
+    setCurrentState('email-templates')
+    setSidebarSection('email-templates')
+  }
+
   const handleDeleteJob = async (jobId: string) => {
     if (!user) return
 
@@ -584,17 +602,23 @@ const HRInterviewApp = () => {
   // Get breadcrumb items based on current state
   const getBreadcrumbItems = () => {
     const items: Array<{ label: string; onClick?: () => void }> = [
-      { label: 'Dashboard', onClick: handleBackToJobs }
+      { label: 'Dashboard', onClick: handleBackToDashboard }
     ]
     
-    if (currentState === 'upload') {
-      items.push({ 
-        label: selectedJob ? 'Add Resumes' : 'Create Job'
-      })
+    if (currentState === 'jobs') {
+      items.push({ label: 'Jobs' })
+    } else if (currentState === 'email-templates') {
+      items.push({ label: 'Email Templates' })
+    } else if (currentState === 'upload') {
+      if (selectedJob) {
+        items.push({ label: 'Jobs', onClick: handleBackToJobs })
+        items.push({ label: 'Add Resumes' })
+      } else {
+        items.push({ label: 'Create Job' })
+      }
     } else if (currentState === 'results' && selectedJob) {
-      items.push({ 
-        label: 'Job Results'
-      })
+      items.push({ label: 'Jobs', onClick: handleBackToJobs })
+      items.push({ label: 'Job Results' })
     }
     
     return items
@@ -603,6 +627,16 @@ const HRInterviewApp = () => {
   // Render appropriate component based on current state
   const renderContent = () => {
     switch (currentState) {
+      case 'dashboard':
+        return (
+          <DashboardHome
+            user={user}
+            jobs={jobs}
+            onNavigateToJobs={handleNavigateToJobs}
+            onCreateJob={handleNewJobClick}
+          />
+        )
+
       case 'jobs':
         return (
           <JobsGrid
@@ -642,6 +676,11 @@ const HRInterviewApp = () => {
             onAddMoreResumes={handleAddMoreResumes}
           />
         )
+
+      case 'email-templates':
+        return (
+          <EmailTemplates user={user} />
+        )
       
       default:
         return null
@@ -654,13 +693,22 @@ const HRInterviewApp = () => {
       {/* Sidebar */}
       <Sidebar 
         currentSection={sidebarSection} 
-        onSectionChange={setSidebarSection}
+        onSectionChange={(section) => {
+          setSidebarSection(section)
+          if (section === 'dashboard') {
+            handleBackToDashboard()
+          } else if (section === 'jobs') {
+            handleNavigateToJobs()
+          } else if (section === 'email-templates') {
+            handleNavigateToEmailTemplates()
+          }
+        }}
       />
       
       {/* Main Content */}
       <div className="flex-1 flex flex-col overflow-hidden">
         {/* Breadcrumb Bar */}
-        {currentState !== 'jobs' && (
+        {currentState !== 'dashboard' && (
           <div className="bg-white border-b border-gray-200 px-6 py-3">
             <Breadcrumb items={getBreadcrumbItems()} />
           </div>

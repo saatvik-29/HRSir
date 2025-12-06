@@ -1140,3 +1140,130 @@ async def add_excel_to_job(
         "successCount": len(new_scored_resumes),
         "errorCount": len(errors),
     }
+
+
+@router.get("/candidate-analytics/{resume_id}")
+async def get_candidate_analytics(
+    resume_id: str,
+    current_user: dict = Depends(get_current_user)
+) -> Dict[str, Any]:
+    """
+    Get detailed analytics for a specific candidate including:
+    - Resume metadata
+    - Resume summary/feedback
+    - Interview results (if available)
+    - Status and score
+    """
+    try:
+        # Find the job containing this resume
+        job = job_profiles.find_one({
+            "recruiterId": current_user["_id"],
+            "scoredResumes.resumeId": resume_id
+        })
+        
+        if not job:
+            raise HTTPException(
+                status.HTTP_404_NOT_FOUND,
+                "Candidate not found or you don't have access"
+            )
+        
+        # Find the specific resume in the job
+        resume = None
+        for r in job.get("scoredResumes", []):
+            if r.get("resumeId") == resume_id:
+                resume = r
+                break
+        
+        if not resume:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Resume not found")
+        
+        # Extract metadata from resume text if available
+        metadata = {
+            "name": resume.get("name", "Unknown"),
+            "email": resume.get("email", "Not provided"),
+            "filename": resume.get("filename", "Unknown"),
+            "score": resume.get("score", 0),
+            "status": resume.get("status", "in-process")
+        }
+        
+        # Try to extract additional metadata from resume text
+        resume_text = resume.get("text", "")
+        if resume_text:
+            # Simple extraction - can be enhanced with NLP
+            text_lower = resume_text.lower()
+            
+            # Extract phone (simple pattern)
+            import re
+            phone_pattern = r'\b\d{3}[-.]?\d{3}[-.]?\d{4}\b|\b\(\d{3}\)\s*\d{3}[-.]?\d{4}\b'
+            phone_match = re.search(phone_pattern, resume_text)
+            if phone_match:
+                metadata["phone"] = phone_match.group()
+            
+            # Extract location (look for common patterns)
+            location_keywords = ['location:', 'address:', 'city:', 'based in']
+            for keyword in location_keywords:
+                if keyword in text_lower:
+                    idx = text_lower.index(keyword)
+                    location_text = resume_text[idx:idx+100].split('\n')[0]
+                    metadata["location"] = location_text.replace(keyword, '').strip()
+                    break
+            
+            # Extract experience (look for years of experience)
+            exp_pattern = r'(\d+)\+?\s*years?\s*(of)?\s*experience'
+            exp_match = re.search(exp_pattern, text_lower)
+            if exp_match:
+                metadata["experience"] = f"{exp_match.group(1)}+ years"
+            
+            # Extract education (look for degree keywords)
+            education_keywords = ['bachelor', 'master', 'phd', 'mba', 'b.tech', 'm.tech', 'b.sc', 'm.sc']
+            for keyword in education_keywords:
+                if keyword in text_lower:
+                    idx = text_lower.index(keyword)
+                    edu_text = resume_text[idx:idx+50].split('\n')[0]
+                    metadata["education"] = edu_text.strip()
+                    break
+            
+            # Extract skills (look for skills section)
+            if 'skills:' in text_lower or 'technical skills:' in text_lower:
+                skills_idx = text_lower.index('skills:')
+                skills_section = resume_text[skills_idx:skills_idx+200].split('\n')[1:3]
+                skills_text = ' '.join(skills_section).strip()
+                if skills_text:
+                    metadata["skills"] = skills_text[:100]  # Limit length
+        
+        # Get feedback/reasoning
+        feedback = resume.get("reasoning", "No detailed feedback available")
+        
+        # Check for interview results (if interview system is integrated)
+        # This would come from interview_scores or interview_sessions collections
+        interview_results = None
+        try:
+            from db.database import interview_scores
+            interview_score = interview_scores.find_one({
+                "resume_id": resume_id
+            })
+            
+            if interview_score:
+                interview_results = {
+                    "date": interview_score.get("created_at"),
+                    "score": interview_score.get("overall_score"),
+                    "feedback": interview_score.get("feedback"),
+                    "status": interview_score.get("status", "completed")
+                }
+        except Exception as e:
+            print(f"Could not fetch interview results: {e}")
+        
+        return {
+            "metadata": metadata,
+            "feedback": feedback,
+            "interview_results": interview_results,
+            "resume_text_preview": resume_text[:500] if resume_text else None
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status.HTTP_500_INTERNAL_SERVER_ERROR,
+            f"Failed to fetch candidate analytics: {str(e)}"
+        )
