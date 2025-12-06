@@ -974,3 +974,169 @@ async def delete_job(
         "jobId": job_id,
         "deletedFiles": len(files)
     }
+
+
+@router.patch("/jobs/{job_id}/excel", status_code=status.HTTP_200_OK)
+async def add_excel_to_job(
+    job_id: str,
+    description: Optional[str] = Form(None),
+    excel_file: UploadFile = File(...),
+    current_user: dict = Depends(get_current_user),
+) -> Dict[str, Any]:
+    """
+    Add candidates from Excel file to an existing job.
+    Excel should contain columns: name, email, drive (Google Drive link to resume)
+    """
+    # Validate Excel file
+    if not excel_file.filename.endswith(('.xlsx', '.xls')):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "File must be an Excel file (.xlsx or .xls)")
+    
+    # Validate job ID and ownership
+    try:
+        job_obj_id = ObjectId(job_id)
+    except Exception:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid job ID")
+
+    job = job_profiles.find_one({"_id": job_obj_id})
+    if not job:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Job not found")
+
+    if job["recruiterId"] != current_user["_id"]:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Not authorized to update this job")
+    
+    # Update description if provided
+    update_fields = {}
+    if description and description != job["description"]:
+        update_fields["description"] = description
+        index_job_description_chunks(job_id, description)
+    
+    # Get current job description for scoring
+    job_description = description or job["description"]
+    
+    # Read and parse Excel
+    excel_content = await excel_file.read()
+    try:
+        candidates = parse_excel(excel_content)
+    except Exception as e:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Failed to parse Excel: {str(e)}")
+    
+    if not candidates:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "No valid candidates found in Excel")
+    
+    new_files = []
+    new_scored_resumes = []
+    errors = []
+    
+    # Process each candidate
+    for idx, candidate in enumerate(candidates):
+        try:
+            # Download resume from Google Drive
+            resume_bytes, file_extension = await download_from_drive(candidate['drive_link'])
+            
+            # Extract text based on file type
+            if file_extension == '.pdf':
+                text = await extract_pdf_text(resume_bytes, f"resume_{idx}{file_extension}")
+                
+                # Try to extract email from PDF
+                embedded_email = candidate.get('email')
+                if not embedded_email:
+                    try:
+                        doc = fitz.open(stream=resume_bytes, filetype="pdf")
+                        for page in doc:
+                            for link in page.get_links():
+                                uri = link.get("uri", "")
+                                if uri.lower().startswith("mailto:"):
+                                    embedded_email = uri.split("mailto:", 1)[1]
+                                    break
+                            if embedded_email:
+                                break
+                    except Exception:
+                        pass
+                
+                # If still no email, try to find in text
+                if not embedded_email:
+                    m = EMAIL_RE.search(text)
+                    if m:
+                        embedded_email = m.group(0)
+            else:
+                # For non-PDF files, just extract basic text
+                if file_extension == '.txt':
+                    text = resume_bytes.decode('utf-8', errors='ignore')
+                else:
+                    text = resume_bytes.decode('utf-8', errors='ignore')
+                
+                embedded_email = candidate.get('email')
+                if not embedded_email:
+                    m = EMAIL_RE.search(text)
+                    if m:
+                        embedded_email = m.group(0)
+            
+            # Store in GridFS
+            filename = f"{candidate.get('name', 'candidate')}_{idx}{file_extension}"
+            file_id = fs.put(
+                resume_bytes,
+                filename=filename,
+                content_type="application/pdf" if file_extension == '.pdf' else "application/octet-stream",
+                uploadDate=datetime.utcnow()
+            )
+            
+            resume_id = str(file_id)
+            new_files.append({
+                "fileId": file_id,
+                "filename": filename,
+                "fileType": "application/pdf" if file_extension == '.pdf' else "application/octet-stream",
+            })
+            
+            # Index resume
+            index_resume_chunks(resume_id, text)
+            
+            # Score resume
+            score_result = await llm_score(
+                resume_id=resume_id,
+                filename=filename,
+                resume_text=text,
+                job_desc=job_description,
+                override_email=embedded_email
+            )
+            
+            # Use Excel data as fallback
+            final_name = score_result.get("name") or candidate.get('name') or "Unknown"
+            final_email = score_result.get("email") or embedded_email or "Not found"
+            
+            new_scored_resumes.append({
+                "resumeId": resume_id,
+                "filename": filename,
+                "name": final_name,
+                "email": final_email,
+                "score": score_result["score"],
+                "reasoning": score_result["reasoning"],
+                "text": text,
+                "status": "in-process",
+            })
+            
+        except Exception as e:
+            errors.append({
+                "row": candidate.get('row_number'),
+                "name": candidate.get('name', 'Unknown'),
+                "error": str(e)
+            })
+    
+    # Combine existing and new files/resumes
+    if new_files:
+        update_fields["files"] = job.get("files", []) + new_files
+    if new_scored_resumes:
+        update_fields["scoredResumes"] = job.get("scoredResumes", []) + new_scored_resumes
+    
+    # Apply update
+    if update_fields:
+        job_profiles.update_one({"_id": job_obj_id}, {"$set": update_fields})
+    
+    return {
+        "message": "Candidates added from Excel successfully",
+        "jobId": job_id,
+        "newScoredResumes": new_scored_resumes,
+        "errors": errors,
+        "totalProcessed": len(candidates),
+        "successCount": len(new_scored_resumes),
+        "errorCount": len(errors),
+    }

@@ -6,6 +6,8 @@ import { AuthContext } from '@/context/AuthContext'
 import JobsGrid from '@/components/ui/dashboard/Jobsgrid'
 import UploadResume from '@/components/ui/dashboard/UploadResume'
 import ResumeResults from '@/components/ui/dashboard/ResumeResult'
+import Sidebar from '@/components/ui/dashboard/Sidebar'
+import Breadcrumb from '@/components/ui/dashboard/Breadcrumb'
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL
 
@@ -36,6 +38,7 @@ const HRInterviewApp = () => {
   const [isUploading, setIsUploading] = useState(false)
   const [isProcessing, setIsProcessing] = useState(false)
   const [loading, setLoading] = useState(true)
+  const [sidebarSection, setSidebarSection] = useState('dashboard')
 
   // Fetch jobs from API
   const fetchJobs = useCallback(async () => {
@@ -158,6 +161,107 @@ const HRInterviewApp = () => {
     }
   }
 
+  // Create job from Excel file using /jobs/excel API
+  const createJobFromExcel = async (description: string, excelFile: File) => {
+    if (!user) return
+
+    try {
+      setIsUploading(true)
+      const formData = new FormData()
+      formData.append('description', description)
+      formData.append('excel_file', excelFile)
+
+      const response = await fetch(`${API_BASE}/jobs/excel`, {
+        method: 'POST',
+        credentials: 'include',
+        body: formData,
+      })
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.detail || 'Failed to create job from Excel')
+      }
+
+      const newJob = await response.json()
+      
+      // Set the new job as selected and show processing state
+      setSelectedJob(newJob)
+      setCurrentState('results')
+      setIsProcessing(true)
+      
+      // Fetch updated jobs list
+      await fetchJobs()
+      
+      // Simulate processing time and then stop processing indicator
+      setTimeout(() => {
+        setIsProcessing(false)
+      }, 3000)
+      
+      return newJob
+    } catch (error) {
+      console.error('Error creating job from Excel:', error)
+      if (error && typeof error === 'object' && 'message' in error) {
+        alert(`Error creating job from Excel: ${(error as { message: string }).message}`)
+      } else {
+        alert('Error creating job from Excel. Please try again.')
+      }
+      setCurrentState('jobs')
+    } finally {
+      setIsUploading(false)
+    }
+  }
+
+  // Add candidates from Excel to existing job
+  const addCandidatesFromExcel = async (jobId: string, description: string, excelFile: File) => {
+    if (!user) return
+
+    try {
+      setIsUploading(true)
+      const formData = new FormData()
+      if (description) {
+        formData.append('description', description)
+      }
+      formData.append('excel_file', excelFile)
+
+      const response = await fetch(`${API_BASE}/jobs/${jobId}/excel`, {
+        method: 'PATCH',
+        credentials: 'include',
+        body: formData,
+      })
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.detail || 'Failed to add candidates from Excel')
+      }
+
+      const result = await response.json()
+      
+      // Fetch updated jobs list
+      await fetchJobs()
+      
+      // Update selected job
+      const updatedJobs = await fetch(`${API_BASE}/jobs`, {
+        credentials: 'include',
+      }).then(res => res.json())
+      
+      const updatedJob = updatedJobs.find((j: Job) => j.jobId === jobId)
+      if (updatedJob) {
+        setSelectedJob(updatedJob)
+      }
+      
+      alert(`Successfully added ${result.successCount} candidates from Excel!${result.errorCount > 0 ? ` (${result.errorCount} errors)` : ''}`)
+      
+      return result
+    } catch (error) {
+      console.error('Error adding candidates from Excel:', error)
+      if (error && typeof error === 'object' && 'message' in error) {
+        alert(`Error adding candidates from Excel: ${(error as { message: string }).message}`)
+      } else {
+        alert('Error adding candidates from Excel. Please try again.')
+      }
+    } finally {
+      setIsUploading(false)
+    }
+  }
+
   // Create job from candidates data (from Excel parsing)
   const createJobFromCandidates = async (description: string, candidatesData: any[]) => {
     if (!user) return
@@ -262,15 +366,15 @@ const HRInterviewApp = () => {
   }
 
   // Handle upload submission - decides whether to create or update
-  const handleUploadSubmit = async (description: string, files: File[], candidatesData?: any[]) => {
-    if (candidatesData && candidatesData.length > 0) {
-      // Excel/Candidates mode
+  const handleUploadSubmit = async (description: string, files: File[], excelFile?: File) => {
+    if (excelFile) {
+      // Excel mode - use /jobs/excel API
       if (selectedJob) {
-        // Add candidates to existing job
-        await addCandidatesToJob(selectedJob.jobId, description, candidatesData)
+        // Add candidates from Excel to existing job
+        await addCandidatesFromExcel(selectedJob.jobId, description, excelFile)
       } else {
-        // Create new job from candidates data
-        await createJobFromCandidates(description, candidatesData)
+        // Create new job from Excel file
+        await createJobFromExcel(description, excelFile)
       }
     } else if (selectedJob) {
       // Update existing job with PDF files
@@ -477,51 +581,98 @@ const HRInterviewApp = () => {
     )
   }
 
-  // Render appropriate component based on current state
-  switch (currentState) {
-    case 'jobs':
-      return (
-        <JobsGrid
-          jobs={jobs}
-          user={user}
-          loading={loading}
-          onJobSelect={handleJobSelect}
-          onNewJobClick={handleNewJobClick}
-          onDeleteJob={handleDeleteJob}
-        />
-      )
+  // Get breadcrumb items based on current state
+  const getBreadcrumbItems = () => {
+    const items: Array<{ label: string; onClick?: () => void }> = [
+      { label: 'Dashboard', onClick: handleBackToJobs }
+    ]
     
-    case 'upload':
-      return (
-        <UploadResume
-          user={user}
-          selectedJob={selectedJob}
-          isUploading={isUploading}
-          onBack={handleBackToJobs}
-          onSubmit={handleUploadSubmit}
-        />
-      )
+    if (currentState === 'upload') {
+      items.push({ 
+        label: selectedJob ? 'Add Resumes' : 'Create Job'
+      })
+    } else if (currentState === 'results' && selectedJob) {
+      items.push({ 
+        label: 'Job Results'
+      })
+    }
     
-    case 'results':
-      if (!selectedJob) {
-        // Fallback to jobs if no job is selected
-        setCurrentState('jobs')
-        return null
-      }
-      
-      return (
-        <ResumeResults
-          user={user}
-          job={selectedJob}
-          isProcessing={isProcessing}
-          onBack={handleBackToJobs}
-          onAddMoreResumes={handleAddMoreResumes}
-        />
-      )
-    
-    default:
-      return null
+    return items
   }
+
+  // Render appropriate component based on current state
+  const renderContent = () => {
+    switch (currentState) {
+      case 'jobs':
+        return (
+          <JobsGrid
+            jobs={jobs}
+            user={user}
+            loading={loading}
+            onJobSelect={handleJobSelect}
+            onNewJobClick={handleNewJobClick}
+            onDeleteJob={handleDeleteJob}
+          />
+        )
+      
+      case 'upload':
+        return (
+          <UploadResume
+            user={user}
+            selectedJob={selectedJob}
+            isUploading={isUploading}
+            onBack={handleBackToJobs}
+            onSubmit={handleUploadSubmit}
+          />
+        )
+      
+      case 'results':
+        if (!selectedJob) {
+          // Fallback to jobs if no job is selected
+          setCurrentState('jobs')
+          return null
+        }
+        
+        return (
+          <ResumeResults
+            user={user}
+            job={selectedJob}
+            isProcessing={isProcessing}
+            onBack={handleBackToJobs}
+            onAddMoreResumes={handleAddMoreResumes}
+          />
+        )
+      
+      default:
+        return null
+    }
+  }
+
+  // Main render with sidebar
+  return (
+    <div className="flex h-screen overflow-hidden bg-gray-50">
+      {/* Sidebar */}
+      <Sidebar 
+        currentSection={sidebarSection} 
+        onSectionChange={setSidebarSection}
+      />
+      
+      {/* Main Content */}
+      <div className="flex-1 flex flex-col overflow-hidden">
+        {/* Breadcrumb Bar */}
+        {currentState !== 'jobs' && (
+          <div className="bg-white border-b border-gray-200 px-6 py-3">
+            <Breadcrumb items={getBreadcrumbItems()} />
+          </div>
+        )}
+        
+        {/* Content Area */}
+        <div className="flex-1 overflow-auto">
+          {renderContent()}
+        </div>
+      </div>
+    </div>
+  )
 }
 
 export default HRInterviewApp
